@@ -4,6 +4,8 @@
 - 构造方法中 setConfigLocations ,主要是配置路径，重新解析路径
 - **refresh()** 构建 ApplicationContext主要方法 (AbstractApplicationContext类中)
 - ** refresh()**方法下的主要调用链
+  > 主要流程 ![Image text](../../imgs/refresh方法流程.jpg)
+  > 图片来源 [https://blog.csdn.net/qq_35190492/article/details/110383213]
   - prepareRefresh 准备刷新的上下文环境
     - initPropertySources 方法，空方法，用户自行实现
     - getEnvironment().validateRequiredProperties方法，验证属性文件是否在环境中
@@ -80,3 +82,5 @@
     ```
   - finishRefresh 完成刷新过程，通知生命周期处理器刷新，同时发出ContextRefreshEvent通知别人
   - 抛出异常时，调用destroyBeans方法和cancelRefresh方法
+
+[]: https://blog.csdn.net/qq_35190492/article/details/110383213

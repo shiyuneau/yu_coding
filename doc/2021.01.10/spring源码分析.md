@@ -156,9 +156,11 @@
       1. invokeAwareMethods 
           Spring中提供了一些Aware相关接口(BeanFactoryAware、ApplicationContextAware等)，实现这些Aware接口的bean，在被初始化后，可以获得一些相应的资源。如BeanNameAware类的setBeanName , BeanClassLoaderAware类的setBeanClassLoader等
       2. applyBeanPostProcessorsBeforeInitialization 处理器的应用
-          再调用客户自定义初始化方法钱记忆调用自定义初始化方法后，会分别调用BeanPostProcessor的postProcessBeforeInitialization和postProcessAfterInitialization方法，根据用户的需求进行响应的处理
+          再调用客户自定义初始化方法钱记忆调用自定义初始化方法后，会分别调用BeanPostProcessor的postProcessBeforeInitialization,根据用户的需求进行响应的处理
       3. invokenInitMethods 
           调用初始化方法，可以是init-method配置，也可以是Bean实现的InitializingBean接口。该方法先检查是否是InitializingBean，如果是，则调用afterPropertiesSet方法，再调用init-method解析方法
+      4. applyBeanPostProcessorsAfterInitialization 后处理器的应用
+          调用BeanPostProcessor的postProcessAfterInitialization,根据用户的需求进行相应处理。(例如，spring aop 的代理就是在此处进行的处理)
     - registerDisposableBeanIfNecessary 根据scope注册bean
       主要是注册destroy-method和DestructionAwareBeanPostProcessor方法
 

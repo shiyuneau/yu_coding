@@ -1,0 +1,294 @@
+进程
+线程
+协程
+启动线程的三种方式 1. Thread , 2.Runnable 3.通过executors.newCachedThread
+
+sleep 暂定，让给别的线程 让出cpu时间片
+yeild 先让出，别的线程有机会执行，进入等待队列，也有可能重新运行
+
+join 调用另一个线程的join方法，让另一个线程运行，另一个线程完事之后，当前线程在执行。
+	三个线程，如何顺序输出，使用join，
+
+
+thread state
+	new
+	  runnable
+	 ready 就绪 （cpu的等待队列）
+	 running 获取到cpu
+	 waiting locksupport.park,join,sleep,wait 可能被打断，interrupt
+	 timedwaiting 
+	 block 阻塞 sync ,没拿到所
+	 terminated 结束
+
+synchorized
+	独占锁
+	拿到锁之后，才能执行synchorized锁定得代码
+		对象头，markword，
+	sync this
+	sync method
+	上述两个方法，理论上等值
+	sync static method （sync t.class 锁得是 class 这个对象）
+
+	同步方法和非同步方法，是否可以调用 。可以调用 。 模拟
+
+	会在释放锁得时候，将修改得变量刷新回内存
+
+	为什么是可重入锁 
+		父类，子类，子类重写方法，内部调用super， 如果不可重入，直接死锁 (同一个锁)
+
+		父类和子类得时候，synchorized锁得是哪个对象 synchorized this
+	程序中如果出现异常，锁会被释放
+
+	第一个线程进来得时候，没有加锁，偏向锁，记录线程ID
+	有线程争用，转变为自选锁(占用cpu，不访问操作系统，在用户态，不访问内核态)，自旋，等锁释放，10次之后，变为轻量级锁，在变为重量级锁
+	执行时间长，尽量用os锁
+	执行时间短，线程数量少，尽量使用自旋锁
+
+	线程概念
+	常用方法
+	synchorized不能使用String常量，Integer，Long(基础数据类型) 不能使用空对象
+
+volatile
+	保证线程可见性 :mesi ，缓存一致性协议
+	禁止指令重排序(CPU)  double check lock 单例模式
+	lock fence
+	store fence 读屏障，写屏障
+
+CAS 无锁优化，自旋 cpu原语，cpu得原子操作，不可被打断
+ABA 问题，cas不能解决ABA问题，想解决得话，加版本号，版本号和值一起检查
+AtomicStampedReference 带版本号
+
+unsafe类 直接操作java虚拟机里面得内存。
+	compareandset，weakcompareandset
+		要改得对象，期望得值，要改成得值
+	不能直接使用
+
+longadder 类 (也是并发的一种，使用方法类似于AtomicInteger，也是cas操作) longaccumutor
+	内部是分段锁,值放到数组中，把线程分段锁在不同的数组中，每个数组运算，最后把所有数组的值加起来
+
+可重入锁 ReentrantLock
+
+
+cyclicbarrier 循环的栅栏
+
+(面试一般不太问) phaser (阶段) 分阶段运行 (遗传算法)
+
+ReadWriteLock 读写锁 共享锁(读锁)和排他锁(写锁) 读不互斥，排他锁互斥
+StampedLock
+ReentrantLock 一种互斥锁，其他线程不能读，也不能写
+Semaphore 信号量 限流，限制线程的个数。可以有多个线程，但能获取到的只有 Semaphore获取的个数
+
+
+Exchanger 线程之间通信 
+LockSupport LockSupport.park() 可以让线程在满足条件的情况下 停止运行 。LockSupport.unpark(t) ，解封停止的线程
+不适用LockSupport 的时候，阻塞需要synchorized ， unpark方法可以在park方法之前调用
+
+notify 方法之后，不会立即唤醒 wait的线程，会等到退出同步块的时候唤醒
+
+
+1.8的实现 读AQS源码
+NonFairSync内部类中得lock方法
+
+ final void lock() {
+ 			// 首先第一次进来 直接使用cas来设置当先线程
+            if (compareAndSetState(0, 1))
+                setExclusiveOwnerThread(Thread.currentThread());
+            else
+            // 之后进来需要尝试获取锁
+                acquire(1);
+        }
+ AbstractQueuedSynchronizer中得acquire方法
+ public final void acquire(int arg) {
+ 		// 尝试获取锁 tryAcquire方法 调用具体实现类中得方法
+        if (!tryAcquire(arg) &&
+        	// 如果tryAcquire方法返回false(没有获取到对应得锁)，将该节点放入到node得等待队列中，
+        	// 队列里面尝试获得锁
+            acquireQueued(addWaiter(Node.EXCLUSIVE), arg))
+            selfInterrupt();
+    }
+
+    怎么释放锁()
+ 1.9 之后，实现方式有不同
+ Node节点增加了VarHandle ，可以对变量进行原子性得操作(普通变量就可以) native实现，调用cpu得源语 (可理解为直接操作二进制码，比反射快)
+ Object o = new Object();
+ 变量o 指向 Object得类得对象
+ varHandle则是指向对象得引用
+
+
+AQS
+addWaiter方法中，在链表尾部添加元素，使用得CAS操作(compareAndSetTail,使用cas只查看尾部得元素，不需要给整个链表上锁)
+
+双向链表得原因，需要看前面节点得状态，如果前面状态有锁，那么就自选等待
+
+AQS释放方法的时候，会再唤醒其他的等待的线程，具体方法 unparkSuccessor方法，使用的 从尾部便利链表，原因可参考 https://blog.csdn.net/foxexception/article/details/108917338 
+
+
+ThreadLocal 只有当前线程可以拿到 ，底层是一个ThreadLocalMap ,Entry (key,value对)
+Thread.currentThread.map(ThreadLocal,Person)
+重要得点是，当前线程，当前线程的ThreadLocal
+
+    public void set(T value) {
+    // 获取 currentThread
+        Thread t = Thread.currentThread();
+    // 获取当前线程的ThreadLocalMap
+        ThreadLocalMap map = getMap(t); // return t.threadLocals 当前线程的threadLocals(ThreadLocalMap)对象，
+    // map不为空，说明t和当前线程是一致的，直接存入 
+        if (map != null)
+            map.set(this, value);
+        else
+    // 否则，将当前线程和value存入
+            createMap(t, value);
+    }
+
+spring的声明式事务，使用的ThreadLocal
+
+1.8 finalize方法还可以用，1.9之后finalize方法被定义为废弃方法
+被回收的时候。finalize方法会被调用
+四种引用 
+强 直接new
+软 softReference 当对象呗软引用使用的时候，只有当内存不够用的时候，才会回收，主要用作缓存
+弱 weakReference 垃圾回收，就被回收。一般用在容器里(如果有一个强引用，引用一个弱引用，只要强引用被回收，对应的弱引用就被回收，不需要手动执行回收之类的操作)，一个典型的应用是threadLocal
+虚 PhantomReference，虚引用一旦被回收，会被放到你设置好的队列里，必回收，管理堆外能存(基本不用，给写虚拟机的人用的)，虚引用里面的值，get也拿不到，只是为了给通知
+	NIO DirectByteBuffer 直接内存，不被虚拟机管理的内存，由操作系统管理。JVM无法回收
+
+内存泄漏 ： 有一块内存 永远被占用，但没有地方用到，
+ThreadLocal中Entry为什么使用WeakReference: 去除内存泄漏的风险
+ThreadLocal使用完之后，手动remove掉
+
+Thread有个变量ThreadLocal.ThreadLocalMap
+
+ThreadLocal存储的内容是什么，是调用ThreadLocal.set方法的线程，调用时的this的ThreadLocal对象为key，set方法里面的值为value
+存储的结构 ThreadLocalMap，本质是Entry ,(key value对)，其中 entry继承了WeakReference
+
+实际上 ThreadLocalMap 中使用的 key 为 ThreadLocal 的弱引用，弱引用的特点是，如果这个对象只存在弱引用，那么在下一次垃圾回收的时候必然会被清理掉。
+
+所以如果 ThreadLocal 没有被外部强引用的情况下，在垃圾回收的时候会被清理掉的，这样一来 ThreadLocalMap中使用这个 ThreadLocal 的 key 也会被清理掉。但是，value 是强引用，不会被清理，这样一来就会出现 key 为 null 的 value。
+
+ThreadLocalMap实现中已经考虑了这种情况，在调用 set()、get()、remove() 方法的时候，会清理掉 key 为 null 的记录。如果说会出现内存泄漏，那只有在出现了 key 为 null 的记录后，没有手动调用 remove() 方法，并且之后也不再调用 get()、set()、remove() 方法的情况下。
+
+WeakhashMap 
+AQS的unlock方法源码
+
+策略模式 comparetor compareto
+
+容器及并发容器
+collection
+	list
+		CopyOnWriteList
+		Vector	Stack
+		ArrayList
+		LinkedList
+	set
+		HashSet	LinkedHashSet
+		SortedSet	TreeSet
+		EnumSet
+		CopuOnWriteArraySet
+		ConcurrentSkipListSet
+	queue(高并发准备) 是为了任务的取和装
+		Deque(双端队列)
+			ArrayDeque
+			BlockingDeque	LinkedBlockingDeque
+		BlockingQueue   queue和list的区别: queue增加了对线程友好的api，offer，peek，poll。 其中Blockingqueue还添加了put和take，可以实现阻塞，
+			ArrayBlockingQueue 有界队列 put 满了会等待，程序阻塞，add抛出异常，offer 根据返回值判断添加成功还是失败，offer还提供了加入时间的方法offer(str,TimeUnit)
+			PriorityBlockingQueue 
+			LinkedBlockingQueue 无界队列，可以一直加
+			TransferQueue LinkedTransferQueue 队列的组合 ，传递。重要的方法 transfer  装完，等着阻塞，另一个线程取走，才会继续向下运行，put 满了才会等着，transfer 上来就会阻塞，可以等待多个线程被取走
+			SynchronousQueue 同步queue 可以传递任务 容量为0，让一个线程给另一个线程下达任务。add方法直接报错(queue full),只能使用put方法。线程池中，比较有用
+
+			PriorityQueue  内部进行了排序，排序好了的树
+			ConcurrentLinedQueue
+			DelayQueue 时间上的队列 ，推迟多长时间后运行，时间越短的越先运行，按时间进行任务调度
+
+map
+	HashMap
+	TreeMap 使用的是红黑树，排好序的
+	WeakHashMap
+	IdentityHashMap
+
+vector ，hashtable , 方法都是加 synchronized , 基本不用了
+hashmap 没有锁
+Collections 容器的工具类 Collections.synchronizedMap 变成带锁的版本，还是使用了synchronized，存储的时候效率高
+juc包出来之后，出了ConcurrentHashMap ，提高的效率在读取的时候
+
+
+ConcurrentHashMap 无序
+
+ConcurrentSkipListMap 并发的排好序的map，跳表的方式实现，跳表:分层次的链表，查找的效率上，比链表本身要高
+
+CopyOnWriteList 写时复制 读特别多，写特别少的情况。 读的时候不加锁，写的时候 加锁，将原来的array复制一份并增加1的长度，添加完之后，将复制后的数组的引用重新赋值给原array变量，写的效率低
+CopyOnWriteSet 
+
+LockSupport的park，
+
+BlockingQueue 阻塞队列，天生友好的生产者消费者模型
+Queue中的接口，offer，add，peak，poll没有添加阻塞，
+			  put、take方法会被阻塞住，使用的ReentrantLock的Condition，在底层使用的LockSupport的park
+
+1.5之后增加了callable接口，也可以用一个线程来运行，call方法 带有返回值
+Executor
+Future 有返回值
+FutureTask fork-join pool会用到 既是一个runnable又是一个future
+Callable 接口一般配合线程池来使用
+CompletableFuture 使用的时fork-join pool 所有的结果都返回之后，拿到最后的结果。各种任务的管理类
+
+线程池
+ThreadPoolExecutor
+	参数详解  Executors.defaultFactory,要指定有意义的线程名称
+		显示core，然后queue，然后max，然后policy
+		Abort 抛异常
+		discard 扔掉
+		discardoldest 扔掉排队最久的
+		callerruns 调用者处理任务
+	正常情况下，一般都使用自定义的策略，保存到消息队列、数据库、等，后续在处理，或者分析程序增加消费
+ForkJoinPool 
+	用于 分解汇总的任务
+		用很少的线程可以执行很多的任务(子任务) TPE做不到先执行子任务
+		CPU密集型
+
+要看的:
+	Executors 的类的 几个线程池的方法源码
+	ThreadPoolExecutor 方法的几个源码
+	ForkJoinPool
+
+Executors:
+	线程池的 工厂，包括:
+		newSingleThreadExecutor 队列的数量为最大值
+			为什么要有单线程的线程池:	(LinkedBlockingQueue)任务队列，生命周期管理
+			FinalizableDelegatedExecutorService 帮助进行垃圾回收，
+
+		newCachedThreadPool 缓存池
+			使用的Synchronous 手递手传递，来了就交出去处理，最多有MAX_VALUE个线程，
+
+		newFixedThreadPool 固定的线程数
+		LinkedBlockingQueue ，
+
+		什么时候用fixed，什么时候用cached
+			cached 保证任务不会堆积
+			fixed 比较平稳
+
+		newScheduledThreadPool
+			max=integer.max_value
+			delayedWorkQueue 隔多久之后运行
+
+		workStealing 
+			每一个线程都有自己的队列。当其中的一个线程执行完，并且队列空了，那从其他线程的队列里面拿一个出来
+			本质上是个 fork-join pool
+		
+
+		设置多少线程数:
+			cpu核数*cup利用率*(1+W(wait 让出CPU)/C(computation 占用cpu时间) 等待时间与计算时间的比率)
+
+		并行 (parallel) 任务执行 并发的子集(多个cpu可以同时处理)
+		并发(concurrent) 任务提交 好多个任务可以同时提交
+
+
+ThreadPoolExecutor 源码，包括 execute ,addworker
+
+ForkJoinPool  
+fork-join pool 适合把大任务切分成一个一个的小任务
+
+流式处理中的并行流
+	parallelStream，不需要同步处理的时候，可以使用streamam的并行流进行处理
+
+
+

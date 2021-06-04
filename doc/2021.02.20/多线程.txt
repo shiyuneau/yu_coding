@@ -79,7 +79,7 @@ ReentrantLock 一种互斥锁，其他线程不能读，也不能写
 Semaphore 信号量 限流，限制线程的个数。可以有多个线程，但能获取到的只有 Semaphore获取的个数
 
 
-Exchanger 线程之间通信 
+Exchanger 线程之间通信
 LockSupport LockSupport.park() 可以让线程在满足条件的情况下 停止运行 。LockSupport.unpark(t) ，解封停止的线程
 不适用LockSupport 的时候，阻塞需要synchorized ， unpark方法可以在park方法之前调用
 

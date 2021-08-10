@@ -1,0 +1,386 @@
+对象在内存中的内存布局是什么样的？
+
+描述synchronized和ReentrantLock的底层实现和重入的底层原理。
+
+谈谈AQS，为什么AQS底层是CAS+volatile？
+
+描述下锁的四种状态和锁升级过程？
+
+Object  o = new Object() 在内存中占用多少字节？
+
+自旋锁是不是一定比重量级锁效率高？
+
+打开偏向锁是否效率一定会提升？
+
+重量级锁到底重在哪里？
+
+重量级锁什么时候比轻量级锁效率高，同样反之呢？
+
+
+线程课 ----  子路 讲源码
+
+point1: jvm会发生指令重排，即会发生在 编译阶段，也会发生在运行阶段；
+
+point2: 在主线程当中，如果启动了一个子线程，在执行主线程，计算机会有80%概率 先 执行主线程，在执行子线程 (没有理论支撑的理论)
+
+point3: 在子线程中，如果有方法调用，就会认为有方法溢出，所以jvm不会进行优化
+
+例子:
+	boolean running = true;
+	main(){
+		startthread();
+		Thread.sleep(10);
+		running = false;
+	}
+	startthread() {
+		while(running) {
+			system.out.print("----")
+		}
+	}
+	这种情况startthread也会停止
+
+point4: 停止线程或者终止线程最好使用 interupt,捕获了interrupt异常之后，会先抛出异常，然后让当前线程执行完成，结束线程
+
+
+point5: 重量级锁 ，通过os 函数来实现的锁 ，调os函数的话，需要从 用户态  转化为 内核态 ，实现方式 为 mutex 互斥 pthread_mutex_lock上锁，pthread_mutex_unlock 		释放锁  , synchronized 防止互斥，
+		偏向锁  方法一定要保证线程安全，但在实际情况中 不一定有互斥产生，所以偏向所是synchronized锁的对象没有资源竞争的情况下存在的 ，有70-80% 的情况下，都只有一个线程去加锁。偏向锁第一次会调用os函数，之后不会调用os函数实现 ， (但此时理论上不是偏向锁，是一个轻量级锁，因为jvm做了优化，没有关闭偏向锁延迟的话，首先进入的是轻量级锁)
+
+point6: synchronized 关键字修饰 static 修饰的变量，锁的是 类的字节码
+
+point7: 线程中，如果抛出了异常，并且没有被处理，会释放锁
+
+point8: 线程之间的通信，共享内存，直接通信
+
+point9: notify 不会释放锁 ， wait会释放锁 。同时 wait 一般 都和 while 循环使用，而不使用if (if只判断一次，当多个producer的时候，可能出现数据异常的情况)
+			if会产生数据异常的原因，当有两个producer在await的时候，此时consumer调用了notifyall，那其中一个竞争到锁，会接这await方法继续执行，然后调用notifyall方法，如果获取到锁的依然是等待的producer线程，还会接着await方法执行，就会出现数据异常。而如果使用while，则会先走while循环判断是不是满了，在走下一步
+point10: lock.lock() 相当于锁的是 this
+
+pointt11: ThreadLocal是线程内部可见，每个线程单独的一份，线程之间不共享。同时  ThreadLocal一般使用在 并发情况不高 的时候，并发高，会因为产生太多对象而导致内存移除
+
+并发容器
+point1: ConcurrentLinkedQueue  并发链表队列 ， 无界队列，也可以是有界队列(size为int 最大值)  offer ， poll(拿完队列减少一个)，peek(拿完队列不会发生变化)
+point2: CopyOnWriteArrayList 写时复制 ， 应用 : 写少，读多，
+point3: ConcurrentHashMap 
+		ConcurrentSkipListMap 跳表 可以排序 并发的TreeMap
+point4: LinkedBlockingQueue 链表式阻塞式 的队列。 生产者/消费者模式。 put方法和take方法是主要的阻塞方式
+point5: ArrayBlockingQueue 有界阻塞队列，需要指定容量 add方法直接报错(queue full) , put方法不会报错阻塞住 ， offer方法会返回给你是否添加成功
+point6: DelayedQueue 排队的队列，做定时任务。具体的task需要实现Delayed类，并实现其中的compare相关的方法，
+point7: LinkedTransferQueue 需要先启动消费者，只有先有消费者，才会直接将消息发送给消费者。如果后有 的消费者，那么会阻塞在这里
+point8： SynchronousQueue 同步阻塞队列： 同步队列是容量为0，也就是来的东西必须给消费掉。 调用add方法会直接报错，(add需要在有容量的时候才能使用)                             必须要有消费者消费，put方法会阻塞住
+
+
+并发锁的原理:
+point1: 并发锁synchronized关键字最根本的原理就是 对象头
+		一个对象头默认是16byte(128bit),包含 markword 8byte(64bit),klass point(指向对象的指针)，instance data(根据实际情况分配) ，padding (对其填充，目的是为了填充到16byte的整数倍)
+point2: markword 整体为8byte，但根据不同状态有不同的地址分配
+					25bit			|		32bit		| 1bit 	 |	4bit  	| 	1bit 	| 2bit
+					锁状态			|	hashcode		| 		 | 分代年龄  |  是否偏向锁| 锁状态
+			无锁::  unused			| hashcode			| unused | 分代年龄  | 0			| 01
+			偏向锁: 前54位记录当前线程的指针| 2bit记录Epoch|unused  | 分代年龄  | 1 		| 01
+			轻量级锁:	前62位指向线程栈中  LockRecord 指针 								| 00
+			重量级锁:	前62位指向重量级锁的指针 											| 10
+			GC标记信息:   CMS过程用到的标记信息											| 11
+point3: 4bit分代年龄的作用是在垃圾回收的时候，没回收一次，都会+1 ，当达到最大值15 的时候，就会从 年轻代升级为老年代
+
+point4: 可以通过 openjdk 的 jol jar包，查看对象头的信息，大致是这样的
+		com.luban.layout.A object internals:
+ 		OFFSET  SIZE   TYPE DESCRIPTION                               VALUE
+      		0     4        (object header)                           01 00 00 00 (00000001 00000000 00000000 00000000) (1)
+      		4     4        (object header)                           00 00 00 00 (00000000 00000000 00000000 00000000) (0) 前两位是mark word数据
+      		8     4        (object header)                           43 c1 00 20 (01000011 11000001 00000000 00100000) (536920387) 该数据是 klass point 对象指针
+     		12     4    int A.i                                       0 由于存在对象，4byte是对象的大小
+		Instance size: 16 bytes 由于mark word + klass point + instance data正好是16byte，该对象中 没有了对象填充
+		Space losses: 0 bytes internal + 0 bytes external = 0 bytes total
+
+		前两位 mark word中，由于 计算机存在 大端、小端的问题，后56bit存放的是hashcode，第一个位置存放的是 unused+分代年龄+是否偏向锁+锁状态  (直接倒着看前两行)
+
+		jdk1.8之后，存在延迟偏向锁的特性，大致为在程序系统的时候，前四秒会禁止使用偏向锁，如果在这4s中出现了sync关键字，则直接升级为轻量级锁。如果开启使用偏向锁，则遇见sync会直接升级为偏向锁
+		通过 java -XX:+PrintFlagsFinal -version|findstr /i bias 命令可以查看当前版本 偏向锁的开启时间
+
+			为什么会出现延迟偏向锁: 大致的理解是因为锁的切换 需要涉及到 用户态 和内核态的转换，如果启动程序之后，只有一个线程竞争锁，那么加入偏向锁或进行锁的消除，消耗资源
+
+			添加参数  -XX:+UseBaisedLocking -XX:BiasedLockingStartupDelay=0 可以直接开启偏向锁
+
+		如果在不调用锁的对象的hashcode的情况下，未开启偏向锁，锁的一般顺序为  无锁，加sync后轻量级锁，竞争锁 重量级锁，退出同步块 重量级锁，调用GC 无锁
+											 开启偏向锁或者睡眠四秒后      偏向锁，加sync后偏向锁，竞争锁 重量级锁，退出同步块 重量级锁，调用GC 无锁
+
+											 调用wait方法，锁立刻变成重量锁，(大概是 相当与让出cpu了，从用户态转换为了内核态)
+
+        在没有锁竞争的情况下(锁未升级到重量级锁)，退出sync关键字后，会从轻量级锁 回退到 无锁状态
+
+        轻量级锁 -> 重量级锁条件 : 1. 轻量级锁 自旋 10次 2.等待cpu调度的线程数超过cpu核数的一半
+
+        	轻量级锁尝试在应用层面解决线程同步的问题，而不出发操作系统的互斥操作。轻量级锁减少对线程进入互斥的几率，不能替代互斥
+
+        如果在加锁之前调用了锁对象的hashcode，那么就不会升级为偏向锁，因为偏向锁会占用54 位，但此时已被hashcode占用了，会直接升级为轻量级锁
+
+        锁的效率 依次 为  偏向锁 > 轻量级锁 > 重量级锁
+
+锁膨胀的过程:
+
+point:: 偏向锁退出同步代码块之后，也是偏向锁；轻量级锁退出同步块之后，会将锁还原会无锁状态 
+
+point5: 取消了延迟偏向，但在程序刚刚启动的时候，会直接显示为 偏向锁 。这时候可以把 这个偏向锁看成为一个可偏向状态。因为除了 101，前56位 代表线程指针的位置都是0。可以认为当前 对象是一个可以进行偏向的对象
+
+
+point6: 
+		批量重偏向: 阈值 是 20
+			正常情况下，偏向锁是无法重新偏向的，默认只会偏向第一个偏向的线程。但经过优化之后，会出现 重偏向 的现象。
+			重偏向的场景: main方法中两个线程，A线程循环N次，每次都创建一个对象，并加sync修饰，将对象缓存到list 中。 此时为偏向锁，然后运行线程A 。 B线程也循环上一步的list，对其中的sync 对象重新用sync修饰，当list的容量大于20的时候，循环加sync 的时候，前20个会是 轻量级锁， 大于20 的对象 的锁标志会变为偏向锁。
+
+			大致的原因: 从偏向锁到轻量级锁，涉及到锁的膨胀，该过程需要先将偏向锁撤销为无锁，再膨胀为轻量级锁。当在同一个类中，同时出现这么多膨胀的过程，jvm认为该类可以优化，就会进行锁的重偏向
+
+
+			关于 重偏向 较为详细的说法 ： 以class为单位，为每个class维护一个偏向撤销计数器，每一次该class的对象发生偏向撤销操作时，该计数器+1，当这个值达到重偏向阈值(默认20)时，JVM就认为该class的偏向锁有问题，因此会进行批量重偏向。每个对象会有一个对应的epoch字段，每个处于偏向锁状态对象的mark word中也有该字段，其初始值为创建该对象时，class中的epoch的值。每次发生批量重偏向时，就将该值+1，同事遍历JVM中所有线程的栈，找到该class所有正处于加锁状态的偏向锁，将其epoch字段改为新值，下次获得锁时，发现当前对象的epoch值和class的epoch不相等，那就算当前已经偏向了其他线程，也不会执行撤销操作，而是直接通过cas操作将其mark word的thread id改成当前线程id
+		
+		批量撤销: 阈值 是 40
+			相当于  一个 加索的list中有超过40 的线程，b线程 给前30个加索，会进行锁的重偏向，c线程 又会继续给线程加索，在 c 的40 的时候，就认为不适合 批量重偏向了，就会出现锁的批量撤销，后续的都升级为轻量级锁
+
+
+point7: 锁膨胀的过程:
+
+		无锁 ---> 偏向锁 a.查看对象头是否是偏向锁 b.不是偏向锁，使用cas替换当前对象头的线程ID，替换成功，升级为偏向锁
+						如果对象已经持有偏向锁，当再有对象过来的时候，检查对象头的mark word 中记录的是否是当前线程ID，如果是，直接获取偏向锁。否则，进行cas替换，替换成功，为偏向锁，替换失败，膨胀为偏向锁
+
+		偏向锁 ---> 轻量级锁  。 偏向锁到轻量级锁的过程主要的是进行cas。cas的过程中，old值是当前对象持有的markword，预期值是无锁的markword，新值就是 当前的线程ID。
+								轻量级锁什么时候发生  线程交替执行，无竞争
+
+
+			Lock_Record 对象 。线程中有对应的栈，轻量锁的话，在当前的栈中创建一个 lock_record ，存放的是 对象 无锁状态下的 mark_word ， 还有一个Object 指向具体的对象 。而在对象头的地方的lock_record ，指向 的就是栈帧中的lock_record 对象(其实是mark_word的首地址)
+
+		轻量级锁 ---> 重量级锁
+
+point8:  
+		开启偏向模式 , 先创建对象，在sleep ， 然后输出对象头信息，然后给对象加锁，此时的 对象头信息分别为  无锁 ，轻量级锁
+			因为sleep在创建对象之后运行，当sleep的时候，已经初始化了对象，这时候 就是 无锁的 对象，是不可偏向的，所以加锁之后是轻量级锁
+
+		单个锁会重偏向？？仍然是偏向同一个线程ID的偏向锁。线程的id都是同一个
+
+		偏向锁的 epoch 值 ？？？
+			k=20以后，class里 的 epoch值 变回了 01 ， 而 a里面的epoch值还是00 ， 发现不一样，重偏向，重偏向新的线程
+
+		monitor对象 是一个jvm创建的c++对象， _owner 当前持有该线程的对象 。 ObjectMonitor对象中存在_owner , _EntryList , _WaitSet
+
+
+		cas 第一个参数 是 指针 (需要从这个指针对应的地址 找值  , 预期值  ，要写入的值)  第一个参数和第二个参数对比，如果相等，将第三个值写入，否则，继续轮询
+
+
+point9: 
+	 monitor对象(openjdk)
+	 	//结构体如下
+		ObjectMonitor::ObjectMonitor() {  
+		  _header       = NULL;  
+		  _count       = 0;  
+		  _waiters      = 0,  
+		  _recursions   = 0;       //线程的重入次数
+		  _object       = NULL;  
+		  _owner        = NULL;    //标识拥有该monitor的线程
+		  _WaitSet      = NULL;    //等待线程组成的双向循环链表，_WaitSet是第一个节点
+		  _WaitSetLock  = 0 ;  
+		  _Responsible  = NULL ;  
+		  _succ         = NULL ;  
+		  _cxq          = NULL ;    //多线程竞争锁进入时的单向链表
+		  FreeNext      = NULL ;  
+		  _EntryList    = NULL ;    //_owner从该双向循环链表中唤醒线程结点，_EntryList是第一个节点
+		  _SpinFreq     = 0 ;  
+		  _SpinClock    = 0 ;  
+		  OwnerIsThread = 0 ;  
+		}  
+
+point10: 线程池:
+	callable 没有具体的一个方法等结果，没有阻塞
+	Future 的 get方法，会进行线程的阻塞。
+
+	newFixedThreadPool(int nThreads) : new ThreadPoolExecutor(nThreads, nThreads,
+                                      0L, TimeUnit.MILLISECONDS,
+                                      new LinkedBlockingQueue<Runnable>())     keepaliveTime = 0 ，不会被回收，不等于0 ，则在keepaliveTime后，会被回收
+
+	newCachedThreadPool : new ThreadPoolExecutor(0, Integer.MAX_VALUE,
+                                      60L, TimeUnit.SECONDS,
+                                      new SynchronousQueue<Runnable>())  来一个任务开一个线程，空闲60s 时间，到时间就没了
+
+    newSingleThreadExecutor : new FinalizableDelegatedExecutorService   没有多线程竞争的情况下，可以保证执行顺序
+            (new ThreadPoolExecutor(1, 1,
+                                    0L, TimeUnit.MILLISECONDS,
+                                    new LinkedBlockingQueue<Runnable>()))
+
+    newScheduledThreadPool(    定时任务
+            int corePoolSize, ThreadFactory threadFactory) :  super(corePoolSize, Integer.MAX_VALUE, 0, NANOSECONDS,
+              new DelayedWorkQueue())
+
+
+    newWorkStealingPool() : return new ForkJoinPool
+            (Runtime.getRuntime().availableProcessors(),
+             ForkJoinPool.defaultForkJoinWorkerThreadFactory,
+             null, true)   工作窃取线程池  。 如果 A 正在执行 ，B 执行结束，A中如果还有任务， B会主动偷取并执行 ，效率高，减少线程之间的竞争
+              				缺点 : 如果双端队列中只有一个任务了，可能会造成线程之间的竞争。而且每个线程都有双端队列，会耗资源
+
+
+Lock
+
+point1: countdownlatch 得使用场景 1. 让线程都准备好一起执行 ， 2.某个线程需要等其他线程执行完
+		semaphore 信号量 : 设置一个数量，这个数量代表着同时可以执行多少个线程 acquire，release之后，接着运行下一个
+		cyclicbarrier : 初始化是0 ，每准备好一个，cyclicbarrier就会+1 ，直到达到了 设定的数量，线程开始运行
+
+point2: 如何实现线程的同步
+			wait/notify , synchronized , ReentrantLock  都是自带的 
+		如何自己实现线程的同步呢 ( 偏向锁 更着重于 结果，自旋锁  更着重于过程，主要在于自旋的过程)
+
+		yield 虽然会让出cpu，但还是会重新开始竞争
+		sleep sleep时间不好把控，不精准
+		park+自旋  采用队列的形式  通过park方法，如果cas失败的，就将当前的线程放入队列中，当前线程释放cpu。 获取到线程的锁执行完成之后，修改状态，然后从队列中拿去一个 ，拿队列的头部数据 
+
+point3: ReentrantLock  默认 不公平锁   （LockSupport.park方法(线程控制的原语)  睡眠当前线程 。 什么时候被唤醒呢? unpark方法，线程的interrupt方法 ，或者未知 的原因 ，时间）
+
+		内部维护了Sync (也是个抽象类),继承于 AbstractQueuedSynchronizer(抽象类) 其实就是一个队列？
+
+		aqs中，为什么使用链表 ？ 队列的话，不是连续的么？ 视频里解释 的结果是  存入线程是存入到了内存中，如 t1 ,t2 ， 但在t1 ,t2 中间可能还存了其他额外的内容，不能保证t1 的下一个一定是 t2 . 需要完全确定t1 的 下一个就是 t2
+			aqs 的队首节点是虚拟节点，队首 的节点中  currentThread = null; 队首的虚拟节点一直都存在 队列的基本条件
+
+			lock的主要操作就是判断 state ，根据状态来判断当前线程事要执行，还是加入队列，还是其他的方式
+
+point4: 公平锁 加锁 过程:
+		
+		加锁->失败->入队->判断:如果上一个节点是park(睡眠)，那么当前节点park;如果上一个节点不是park，那么竞争
+			竞争的时候，需要判断自己是不是第二个节点(也就是头节点，因为头节点是一个虚拟节点，第一个为空 )
+
+		final void lock() {
+            acquire(1); // 传递参数为1 ，意味着通过cas之后，需要让state变为1
+        }
+
+		public final void acquire(int arg) {
+	        if (!tryAcquire(arg) &&
+	            acquireQueued(addWaiter(Node.EXCLUSIVE), arg))
+	            selfInterrupt();
+	    }
+
+
+
+	    tryAcquire(arg) aqs中只定义，需FairSync自己实现 // 尝试获取，看自己是不是要放入队尾
+	    	protected final boolean tryAcquire(int acquires) {
+	            final Thread current = Thread.currentThread(); 获取当前线程
+	            int c = getState();							   拿到aqs 中的state状态
+	            if (c == 0) {								   无人占用锁 -> 当前线程要去上锁
+	                if (!hasQueuedPredecessors() &&			   只有hasQueuedPredecessors返回false才往下执行，返回false则队列为空，直接cas
+	                    compareAndSetState(0, acquires)) {	   cas加锁
+	                    setExclusiveOwnerThread(current);      transient Thread exclusiveOwnerThread = current 。
+	                    return true;						   第一个线程加锁成功
+	                }
+	            }
+	            else if (current == getExclusiveOwnerThread()) {  如果进入到该代码块，则此处为重入锁 ，state+1 ，每重入一次，state都++
+	                int nextc = c + acquires;
+	                if (nextc < 0)
+	                    throw new Error("Maximum lock count exceeded");
+	                setState(nextc);
+	                return true;
+	            }
+	            return false;
+	        }
+
+	        public final boolean hasQueuedPredecessors() {
+		        // The correctness of this depends on head being initialized
+		        // before tail and on head.next being accurate if the current
+		        // thread is first in queue.
+		        Node t = tail; // Read fields in reverse initialization order
+		        Node h = head;
+		        Node s;
+		        return h != t && 													第一次的时候，tail和head都是空，直接返回
+		            ((s = h.next) == null || s.thread != Thread.currentThread());
+		    }
+
+	    要执行这个方法 tryAcquire 必须为 false ，即为 加索失败 
+	    addWaiter(Node.EXCLUSIVE)  aqs 中已经实现了的;其中Node.Exclusive是独占锁，Node.SHARED共享锁。该方法返回了一个当前节点的数据，并且维护了一个aqs的队列
+	    	private Node addWaiter(Node mode) {  创建一个节点，将当前线程放入队列中
+		        Node node = new Node(Thread.currentThread(), mode); 		创建一个线程是当前线程的Node节点
+		        // Try the fast path of enq; backup to full enq on failure
+		        Node pred = tail;											pred等于 尾节点 (都是在尾节点进行添加)
+		        if (pred != null) {											如果尾节点不等于空
+		            node.prev = pred;										让当前新创建节点的前一个节点等于队尾节点
+		            if (compareAndSetTail(pred, node)) {					cas设置尾节点，要将当前节点设置为尾节点，预期值是pred即尾节点，要设置为node
+		                pred.next = node;									如果cas成功了，则让pred (之前的尾节点) 的下一个节点为当前新创建的节点
+		                return node;
+		            }
+		        }
+		        enq(node);													第一次会直接进去该方法
+		        return node;												返回当前自己的node回去
+		    }
+		    private Node enq(final Node node) {	(属于AQS类)		
+		        for (;;) {
+		            Node t = tail;											t=尾节点，第一次进入该方法t=null
+		            if (t == null) { // Must initialize						t=null的情况下，设置一个空的头节点，此处的空节点是一个很重要的内容
+		                if (compareAndSetHead(new Node()))	
+		                    tail = head;									让尾节点和头节点相等
+		            } else {
+		                node.prev = t;										此时头节点已经初始化完成，当前节点得前一个节点是尾节点
+		                if (compareAndSetTail(t, node)) {					将当前节点设置为尾节点
+		                    t.next = node;									让之前的尾节点的下一个节点为当前的节点
+		                    return t;										返回一个完整的aqs
+		                }
+		            }
+		        }
+		    }
+
+	    acquireQueued(Node, arg))
+	    	final boolean acquireQueued(final Node node, int arg) {
+		        boolean failed = true;
+		        try {
+		            boolean interrupted = false;
+		            for (;;) {
+		                final Node p = node.predecessor();					拿当前节点的上一个节点
+		                if (p == head && tryAcquire(arg)) {					上一个节点是投不
+		                    setHead(node);
+		                    p.next = null; // help GC
+		                    failed = false;
+		                    return interrupted;
+		                }
+		                if (shouldParkAfterFailedAcquire(p, node) &&		如果不是头部，则尝试进行park
+		                    parkAndCheckInterrupt())
+		                    interrupted = true;
+		            }
+		        } finally {
+		            if (failed)
+		                cancelAcquire(node);
+		        }
+		    }
+
+		    private static boolean shouldParkAfterFailedAcquire(Node pred, Node node) {  pred:前一个节点，node:当前节点
+			    int ws = pred.waitStatus;											拿到前一个节点的waitStatus (waitStatus默认为0)
+			        if (ws == Node.SIGNAL)											
+			            /*
+			             * This node has already set status asking a release
+			             * to signal it, so it can safely park.
+			             */
+			            return true;
+			        if (ws > 0) {
+			            /*
+			             * Predecessor was cancelled. Skip over predecessors and
+			             * indicate retry.
+			             */
+			            do {
+			                node.prev = pred = pred.prev;
+			            } while (pred.waitStatus > 0);
+			            pred.next = node;
+			        } else {
+			            /*
+			             * waitStatus must be 0 or PROPAGATE.  Indicate that we
+			             * need a signal, but don't park yet.  Caller will need to
+			             * retry to make sure it cannot acquire before parking.
+			             */
+			            compareAndSetWaitStatus(pred, ws, Node.SIGNAL);
+			        }
+			        return false;
+			    }   
+
+
+	    selfInterrupt()
+	    	static void selfInterrupt() {
+		        Thread.currentThread().interrupt();
+		    }
+
+	非公平锁:
+		final void lock() {
+            if (compareAndSetState(0, 1))							直接进行cas交换
+                setExclusiveOwnerThread(Thread.currentThread());    交换成功，抢到锁
+            else
+                acquire(1);										    交换失败，获取锁，就是公平锁的逻辑了，但在tryAccuire方法的时候，使用的还是非公平锁的内容
+        }

@@ -15,9 +15,9 @@
   		nacosAutoServiceRegistration(NacosServiceRegistry,
   									 AutoServiceRegistrationProperties,
   									 NacosRegistration) 该类是非常核心的类，该方法将上面两个方法创建的类传入到方法中，最终传递给NacosAutoServiceRegistration类。
-  									 NacosAutoServiceRegistration(apring-cloud-alibaba-nacos-discovery包下)继承了AbstractAutoServiceRegistration类(spring-cloud-commons包下)。AbstractAutoServiceRegistration类 继承 了ApplicationListener<WebServerInitializedEvent> 类，是一个监听器，该监听器是后面流程的入口
+  									 NacosAutoServiceRegistration(spring-cloud-alibaba-nacos-discovery包下)继承了AbstractAutoServiceRegistration类(spring-cloud-commons包下)。AbstractAutoServiceRegistration类 继承 了ApplicationListener<WebServerInitializedEvent> 类，是一个监听器，该监听器是后面流程的入口
 
-    AbstractAutoServiceRegistration类由于集成了ApplicationListener类，当Spring将所有的bean都初始化完成之后，会发布一个事件，。AbstractAutoServiceRegistration类就会监听到这个相对应的事件，就会进入到对应的onApplicationEvent方法，接着调用bing方法，再调用start方法，再调用register方法，紧接着会调用serviceRegistry.register(getRegistration())方法，进行服务的注册，这个地方就用到了NacosServiceRegistryAutoConfiguration中的NacosServiceRegistry类，进行服务的调用
+    AbstractAutoServiceRegistration类由于集成了ApplicationListener类，当Spring将所有的bean都初始化完成之后，会发布一个事件，。AbstractAutoServiceRegistration类就会监听到这个相对应的事件，就会进入到对应的onApplicationEvent方法，接着调用bind方法，再调用start方法，再调用register方法，紧接着会调用serviceRegistry.register(getRegistration())方法，进行服务的注册，这个地方就用到了NacosServiceRegistryAutoConfiguration中的NacosServiceRegistry类，进行服务的调用
 
   	NacosServiceRegistry类的register方法，主要就是调用ancso提供的客户端api进行服务注册。针对服务的注册，nacos提供了非常核心的接口，Namingservice,该接口提供了实例注册、实例注销、服务发现、服务订阅、取消订阅等一系列客户端调用
   	先会根据registration对象构造实例信息getNacosInstanceFromRegistration，接着调用namingService.registerInstance方法(在nacos-client包下)

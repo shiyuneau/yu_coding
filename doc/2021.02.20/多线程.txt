@@ -16,7 +16,7 @@ thread state
 	 ready 就绪 （cpu的等待队列）
 	 running 获取到cpu
 	 waiting locksupport.park,join,sleep,wait 可能被打断，interrupt
-	 timedwaiting 
+	 timedwaiting
 	 block 阻塞 sync ,没拿到所
 	 terminated 结束
 
@@ -33,7 +33,7 @@ synchorized
 
 	会在释放锁得时候，将修改得变量刷新回内存
 
-	为什么是可重入锁 
+	为什么是可重入锁
 		父类，子类，子类重写方法，内部调用super， 如果不可重入，直接死锁 (同一个锁)
 
 		父类和子类得时候，synchorized锁得是哪个对象 synchorized this
@@ -120,7 +120,7 @@ addWaiter方法中，在链表尾部添加元素，使用得CAS操作(compareAnd
 
 双向链表得原因，需要看前面节点得状态，如果前面状态有锁，那么就自选等待
 
-AQS释放方法的时候，会再唤醒其他的等待的线程，具体方法 unparkSuccessor方法，使用的 从尾部便利链表，原因可参考 https://blog.csdn.net/foxexception/article/details/108917338 
+AQS释放方法的时候，会再唤醒其他的等待的线程，具体方法 unparkSuccessor方法，使用的 从尾部便利链表，原因可参考 https://blog.csdn.net/foxexception/article/details/108917338
 
 
 ThreadLocal 只有当前线程可以拿到 ，底层是一个ThreadLocalMap ,Entry (key,value对)
@@ -132,7 +132,7 @@ Thread.currentThread.map(ThreadLocal,Person)
         Thread t = Thread.currentThread();
     // 获取当前线程的ThreadLocalMap
         ThreadLocalMap map = getMap(t); // return t.threadLocals 当前线程的threadLocals(ThreadLocalMap)对象，
-    // map不为空，说明t和当前线程是一致的，直接存入 
+    // map不为空，说明t和当前线程是一致的，直接存入
         if (map != null)
             map.set(this, value);
         else
@@ -144,7 +144,7 @@ spring的声明式事务，使用的ThreadLocal
 
 1.8 finalize方法还可以用，1.9之后finalize方法被定义为废弃方法
 被回收的时候。finalize方法会被调用
-四种引用 
+四种引用
 强 直接new
 软 softReference 当对象呗软引用使用的时候，只有当内存不够用的时候，才会回收，主要用作缓存
 弱 weakReference 垃圾回收，就被回收。一般用在容器里(如果有一个强引用，引用一个弱引用，只要强引用被回收，对应的弱引用就被回收，不需要手动执行回收之类的操作)，一个典型的应用是threadLocal
@@ -166,7 +166,7 @@ ThreadLocal存储的内容是什么，是调用ThreadLocal.set方法的线程，
 
 ThreadLocalMap实现中已经考虑了这种情况，在调用 set()、get()、remove() 方法的时候，会清理掉 key 为 null 的记录。如果说会出现内存泄漏，那只有在出现了 key 为 null 的记录后，没有手动调用 remove() 方法，并且之后也不再调用 get()、set()、remove() 方法的情况下。
 
-WeakhashMap 
+WeakhashMap
 AQS的unlock方法源码
 
 策略模式 comparetor compareto
@@ -190,7 +190,7 @@ collection
 			BlockingDeque	LinkedBlockingDeque
 		BlockingQueue   queue和list的区别: queue增加了对线程友好的api，offer，peek，poll。 其中Blockingqueue还添加了put和take，可以实现阻塞，
 			ArrayBlockingQueue 有界队列 put 满了会等待，程序阻塞，add抛出异常，offer 根据返回值判断添加成功还是失败，offer还提供了加入时间的方法offer(str,TimeUnit)
-			PriorityBlockingQueue 
+			PriorityBlockingQueue
 			LinkedBlockingQueue 无界队列，可以一直加
 			TransferQueue LinkedTransferQueue 队列的组合 ，传递。重要的方法 transfer  装完，等着阻塞，另一个线程取走，才会继续向下运行，put 满了才会等着，transfer 上来就会阻塞，可以等待多个线程被取走
 			SynchronousQueue 同步queue 可以传递任务 容量为0，让一个线程给另一个线程下达任务。add方法直接报错(queue full),只能使用put方法。线程池中，比较有用
@@ -216,7 +216,7 @@ ConcurrentHashMap 无序
 ConcurrentSkipListMap 并发的排好序的map，跳表的方式实现，跳表:分层次的链表，查找的效率上，比链表本身要高
 
 CopyOnWriteList 写时复制 读特别多，写特别少的情况。 读的时候不加锁，写的时候 加锁，将原来的array复制一份并增加1的长度，添加完之后，将复制后的数组的引用重新赋值给原array变量，写的效率低
-CopyOnWriteSet 
+CopyOnWriteSet
 
 LockSupport的park，
 
@@ -240,7 +240,7 @@ ThreadPoolExecutor
 		discardoldest 扔掉排队最久的
 		callerruns 调用者处理任务
 	正常情况下，一般都使用自定义的策略，保存到消息队列、数据库、等，后续在处理，或者分析程序增加消费
-ForkJoinPool 
+ForkJoinPool
 	用于 分解汇总的任务
 		用很少的线程可以执行很多的任务(子任务) TPE做不到先执行子任务
 		CPU密集型
@@ -270,11 +270,17 @@ Executors:
 			max=integer.max_value
 			delayedWorkQueue 隔多久之后运行
 
-		workStealing 
+		workStealing
 			每一个线程都有自己的队列。当其中的一个线程执行完，并且队列空了，那从其他线程的队列里面拿一个出来
 			本质上是个 fork-join pool
-		
 
+        最少是cpu 的核心数 ，一般用核心数+1
+        一般说来，大家认为线程池的大小经验值应该这样设置：（其中N为CPU的个数）
+                如果是CPU密集型应用(计算密集)，则线程池大小设置为N+1 ，能实现 CPU 的最优利用率。（即使当计算密集型的线程 偶尔由于页缺失故障或者其他原因暂停时，这个“额外” 的线程也能确保CPU 的时装周期不会被浪费。）
+                如果是IO密集型应用，则线程池大小设置为2N+1
+        但是，IO优化中，这样的估算公式可能更适合：
+                最佳线程数目 = （（线程等待时间+线程CPU时间）/线程CPU时间 ）* CPU数目
+                因为很显然，线程等待时间所占比例越高，需要越多线程。线程CPU时间所占比例越高，需要越少线程。
 		设置多少线程数:
 			cpu核数*cup利用率*(1+W(wait 让出CPU)/C(computation 占用cpu时间) 等待时间与计算时间的比率)
 
@@ -284,7 +290,7 @@ Executors:
 
 ThreadPoolExecutor 源码，包括 execute ,addworker
 
-ForkJoinPool  
+ForkJoinPool
 fork-join pool 适合把大任务切分成一个一个的小任务
 
 流式处理中的并行流

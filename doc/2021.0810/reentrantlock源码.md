@@ -50,7 +50,7 @@ public final boolean hasQueuedPredecessors() {
         Node h = head;
         Node s;
         return h != t &&
-            ((s = h.next) == null || s.thread != Thread.currentThread());
+            ((s = h.next) == null || s.thread != Thread.currentThread()); // 后一个括号内的判断，判断头节点后的下一个节点是不是当前节点，如果是当前持有线程的节点，也可以直接竞争
     }
     
 ```

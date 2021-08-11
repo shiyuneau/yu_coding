@@ -1,0 +1,80 @@
+1.nacos客户端(在具体的应用中)
+	首先根据 spring-cloud-alibaba-nacos-discovery-2.2.0.RELEASE.jar 中的spring.factories发现有几个自动配置项(springboot启动就会加载这些配置好的类)
+		org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+  			com.alibaba.cloud.nacos.discovery.NacosDiscoveryAutoConfiguration,\
+  			com.alibaba.cloud.nacos.ribbon.RibbonNacosAutoConfiguration,\
+  			com.alibaba.cloud.nacos.endpoint.NacosDiscoveryEndpointAutoConfiguration,\
+  			com.alibaba.cloud.nacos.registry.NacosServiceRegistryAutoConfiguration,\
+  			com.alibaba.cloud.nacos.discovery.NacosDiscoveryClientConfiguration,\
+  			com.alibaba.cloud.nacos.discovery.reactive.NacosReactiveDiscoveryClientConfiguration,\
+  			com.alibaba.cloud.nacos.discovery.configclient.NacosConfigServerAutoConfiguration
+  	从中可以发现  NacosServiceRegistryAutoConfiguration ，该类即是客户端服务注册的关键类。
+  	其中有三个方法
+  		nacosServiceRegistry 定义了后面的关键类: NacosServiceRegistry,最终服务的注册都是通过该类注册的
+  		nacosRegistration 主要就是定义了NacosRegistration的bean
+  		nacosAutoServiceRegistration(NacosServiceRegistry,
+  									 AutoServiceRegistrationProperties,
+  									 NacosRegistration) 该类是非常核心的类，该方法将上面两个方法创建的类传入到方法中，最终传递给NacosAutoServiceRegistration类。
+  									 NacosAutoServiceRegistration(apring-cloud-alibaba-nacos-discovery包下)继承了AbstractAutoServiceRegistration类(spring-cloud-commons包下)。AbstractAutoServiceRegistration类 继承 了ApplicationListener<WebServerInitializedEvent> 类，是一个监听器，该监听器是后面流程的入口
+
+    AbstractAutoServiceRegistration类由于集成了ApplicationListener类，当Spring将所有的bean都初始化完成之后，会发布一个事件，。AbstractAutoServiceRegistration类就会监听到这个相对应的事件，就会进入到对应的onApplicationEvent方法，接着调用bing方法，再调用start方法，再调用register方法，紧接着会调用serviceRegistry.register(getRegistration())方法，进行服务的注册，这个地方就用到了NacosServiceRegistryAutoConfiguration中的NacosServiceRegistry类，进行服务的调用
+
+  	NacosServiceRegistry类的register方法，主要就是调用ancso提供的客户端api进行服务注册。针对服务的注册，nacos提供了非常核心的接口，Namingservice,该接口提供了实例注册、实例注销、服务发现、服务订阅、取消订阅等一系列客户端调用
+  	先会根据registration对象构造实例信息getNacosInstanceFromRegistration，接着调用namingService.registerInstance方法(在nacos-client包下)
+
+  	registerInstance方法中，主要得就是创建了 BeatInfo用于 心跳检测，和 reqApi 服务得注册，最终会通过http得方式调用/nacos/v1/ns/instance方法，进行服务得注册。(如果nacos-server是集群部署的话，其实客户端仍然只会发送请求到其中一个集群节点上进行注册，并不会每个集群节点都去注册一遍)
+  	心跳注册这里 主要的实现类是BeatReactor(心跳检测是检测服务时候注册在nacos上)，首先根据 ip等信息创建心跳检测实体，然后调用 addBeatInfo 方法。最终通过
+  	executorService.schedule(new BeatTask(beatInfo), beatInfo.getPeriod(), TimeUnit.MILLISECONDS);
+  	创建一个延时任务进行 心跳检测。默认每5秒进行一个心跳检测。心跳检测会通过http请求发送连接。如果请求的结果是20404，代表资源没有找到则重新发起注册请求。
+
+
+2.nacos服务端(nacos控制台)(https://blog.csdn.net/jb84006/article/details/117633219)
+	由于nacos中，绝大多数的url都是通过静态实体类配置的，在controller上找很难找到对应的接口入口，所以，nacos提供了actuator ,通过这个页面，可以找到对应的/v1/ns/instance的controller，即为InstanceController。
+	register方法最终会调用serviceManager.registerInstance(namespaceId, serviceName, coreInstance);方法 
+	ServiceManager是用来管理服务实例的核心类。
+	注册表结构 Map<String, Map<String, Service>>  Map(namespace, Map(group::serviceName, Service)). 相当于每一个namespce都对应的多个group::servieName，在group::serviceName下才是最终的实例，满足了各种部署需求
+
+	registerInstance方法中主要有两个重要的方法
+		createEmptyService(namespaceId, serviceName, instance.isEphemeral());
+			跟踪进去之后，会发现先创建了一个空的Service，然后调用 putServiceAndInit(service)
+			putServiceAndInit中会调用service.init方法
+			init方法中先调用了定时任务ClientBeatCheckTask，该任务主要是对实例的心跳做一个进一步的检测。
+				如果客户端实例超过15秒还没有发送心跳过来，则将实例健康状态改成false
+				如果客户端实例超过30秒还没有发送心跳过来，则剔除该实例
+				(健康检查的时候，每个客户端实例只会由固定的一台nacos-server节点进行健康检查)
+			然后会将实例，通过addInstance方法添加进去，主要是这句话 consistencyService.put(key, instances);
+			然后调用 mapConsistencyService(key).put(key, value);
+				mapConsistencyService(String key)方法会判断是采用临时实例策略还是持久化实例策略
+				(其实nacos支持AP和CP两种模式的，默认是AP模式，不知道大家有没有注意到，默认情况下，我们注册到naocs注册中心的实例都是临时实例，而临时实例对应的就是AP模式，可以通过在配置文件中配置ephemeral属性来指定持久实例还是临时实例，默认为true。nacos自己实现了Distro协议用于实现AP模式下的数据的一致性，关于这个协议的实现机制将贯穿整个AP模式下的服务注册流程中.)
+			put方法
+				先执行 onPut方法，将数据封装成dataSource,然后通过 Notifier 线程 将datasource形成一个任务添加进去。之后DistroConsistencyServiceImpl 这个类在启动的时候就会被实例化，而且init方法只干了一件事情 通过线程池提交了Notifier线程。在Notifier线程的run方法中，是一个死循环，在队列中取任务，tasks为空，就阻塞，不为空就调用handle方法处理，handle方法最后进入到updateIPs方法更新注册表(之前的map)
+				
+				最终会执行该行代码 
+				distroProtocol.sync(new DistroKey(key, KeyBuilder.INSTANCE_LIST_KEY_PREFIX), DataOperation.CHANGE,
+                DistroConfig.getInstance().getSyncDelayMillis()); distroProtocol.sync是用来nacos-server集群节点间数据同步的，通过异步任务来实现，
+
+3、总结
+
+服务健康检查
+服务端接受到客户端服务注册请求后，创建空的service时（createEmptyService方法中）会开启健康检查任务，当客户端服务掉线后，服务端并不是直接就给剔除出注册表，而是平滑下线：
+（1）如果客户端实例超过15秒还没有发送心跳过来，则将实例健康状态改成false
+（2）如果客户端实例超过30秒还没有发送心跳过来，则剔除该实例
+关于健康检查以及客户端心跳机制我也会在下篇文章中进行详细讲解，本文只是大致介绍。
+  
+
+AP模式和CP模式
+Nacos比其它主流注册中心框架（如Eureka、Zookeeper等）所具备的一个明显的优势就是它即支持AP模式，也支持CP模式，其中AP模式下服务注册实现类：DistroConsistencyServiceImpl，CP模式下服务注册实现类：PersistentConsistencyServiceDelegateImpl。
+  
+
+服务异步注册
+Nacos为了支持高并发服务注册，采用了异步服务注册方式：主线程将客户端的注册实例放入阻塞队列中后，主线程工作就结束了，等再有客户端有注册请求过来会再次往这个队列中放（另外，往队列中存放的其实只是实例的key，不会占用很多空间同时也提升了性能，可以支持大量实例并发注册）；另外在此之前（nacos-server服务启动时）就已经开启了另一个线程：Notifier，该线程会不停（死循环）从队列中取数据并更新到注册表中。需要注意的一点是这里往队列中放和从队列中取都是单线程，所以整个注册过程是异步的，但是以队列为分割，两边都是串行实现，不会出现写-写并发的问题，但是无法避免读-写并发。
+  
+
+注册表如何更新的？如何防止读写并发？
+上面说到，服务注册过程虽然不会出现写-写并发的问题，但是却无法避免读-写并发冲突，那么Nacos是如何避免读写并发冲突的？我们最常见也最容易想到的就是正在写的时候对注册表加锁，那么读请求就只能等待写操作释放锁，这样就会影响性能，降低吞吐量。另一种不加锁的方式就是读写分离，读写分离有很多种实现方法，而Nacos采用的是写时复制（copyOnWrite）思想，即更新注册表时将注册表数据复制一份出来（只复制了注册表中的实例列表部分），对副本进行写操作（读还是注册表），操作完再替换回注册表中，这样就通过读写分离的方式避免了读写并发冲突的问题，大大提高了服务注册并发，提升了性能。
+————————————————
+版权声明：本文为CSDN博主「毛龙蛋」的原创文章，遵循CC 4.0 BY-SA版权协议，转载请附上原文出处链接及本声明。
+原文链接：https://blog.csdn.net/jb84006/article/details/117633219
+
+
+

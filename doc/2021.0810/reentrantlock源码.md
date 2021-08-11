@@ -165,7 +165,9 @@ private static boolean shouldParkAfterFailedAcquire(Node pred, Node node) {  // 
         }
         return false;
     }
-    
+	
+	//该方法内部调用了LockSupport的park方法，让当前线程进行停止，当停止结束之后，返回一个线程是否被打断
+    // 该方法在正常的 lock方法中基本上没有什么意义。但在 lockInterruptibly 方法中，接着调用了doAcquireInterruptibly方法，如果当前线程被打断，则会抛出被打断的异常。同时，如果上锁是调用的是 lockInterruptibly 方法，那么当被interrupt的时候，会直接被唤醒
     private final boolean parkAndCheckInterrupt() {
         LockSupport.park(this);
         return Thread.interrupted();

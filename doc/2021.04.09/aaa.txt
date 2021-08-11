@@ -1,0 +1,190 @@
+    /**
+     * 语音播报功能
+     *
+     * @param message 待播报的内容
+     * @return
+     * @throws FileNotFoundException
+     */
+    @RequestMapping("/voiceplay")
+    @ResponseBody
+    public BaseResponse<String> voicePlay(HttpServletResponse response, String message, String cid) throws IOException {
+        BaseResponse<String> result = new BaseResponse<>();
+        result.setReturnStatus(ReturnStatus.Error);
+        if (message.length() > 2000) {
+            result.setMsg("待转换的文字过长");
+            return result;
+        }
+        // 构建鉴权url
+        String authUrl = null;
+        try {
+            authUrl = getAuthUrl(hostUrl, host, apiKey, apiSecret);
+            log.info(authUrl);
+        } catch (Exception e) {
+            e.printStackTrace();
+            log.error("接口鉴权参数拼接失败");
+            result.setMsg("接口鉴权参数拼接失败");
+            return result;
+        }
+        StringBuilder audio = new StringBuilder();
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmmssSSS");
+        String date = sdf.format(new Date());
+        String destPath = voiceStorePath + date + fileSubfix;
+        String tmpDestPath = voiceStorePath + "tmp_" + date + fileSubfix;
+        File f = null;
+        try {
+            f = new File(destPath);
+            if (!f.exists()) {
+                f.createNewFile();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            log.error("语音合成文件创建失败");
+            result.setMsg("语音合成文件创建失败");
+            return result;
+        }
+        FileOutputStream os = new FileOutputStream(f);
+        OkHttpClient client = new OkHttpClient.Builder().build();
+        //将url中的 schema http://和https://分别替换为ws:// 和 wss://
+        String url = authUrl.replace("http://", "ws://").replace("https://", "wss://");
+        Request request = new Request.Builder().url(url).build();
+        ServletOutputStream out = response.getOutputStream();
+        //设置文件ContentType类型
+        response.setHeader("content-type", "audio/mp3");
+        response.setContentType("application/octet-stream");
+        //设置文件头：最后一个参数是设置下载文件名
+        response.setHeader("Content-Disposition", "attachment;fileName=" + date + fileSubfix);
+        WebSocket webSocket = client.newWebSocket(request, new WebSocketListener() {
+            @Override
+            public void onOpen(WebSocket webSocket, Response response) {
+                super.onOpen(webSocket, response);
+                try {
+                    log.info("连接开始" + response.body().string());
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                //发送数据
+                JsonObject frame = new JsonObject();
+                JsonObject business = new JsonObject();
+                JsonObject common = new JsonObject();
+                JsonObject data = new JsonObject();
+                // 填充common
+                common.addProperty("app_id", appid);
+                //填充business
+                business.addProperty("aue", aue);
+                business.addProperty("tte", "UTF8");//小语种必须使用UNICODE编码
+                business.addProperty("ent", ent);
+                business.addProperty("volume", volume);
+                business.addProperty("vcn", vcn);//到控制台-我的应用-语音合成-添加试用或购买发音人，添加后即显示该发音人参数值，若试用未添加的发音人会报错11200
+                business.addProperty("pitch", pitch);
+                business.addProperty("speed", speed);
+                //填充data
+                data.addProperty("status", 2);//固定位2
+                try {
+                    data.addProperty("text", Base64.getEncoder().encodeToString(message.getBytes("utf8")));
+                } catch (UnsupportedEncodingException e) {
+                    e.printStackTrace();
+                }
+                //填充frame
+                frame.add("common", common);
+                frame.add("business", business);
+                frame.add("data", data);
+                webSocket.send(frame.toString());
+            }
+
+            @Override
+            public void onMessage(WebSocket webSocket, String text) {
+                super.onMessage(webSocket, text);
+                //处理返回数据
+                log.info("receive=>" + text);
+                ResponseData resp = null;
+                try {
+                    resp = new Gson().fromJson(text, ResponseData.class);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+                if (resp != null) {
+                    if (resp.getCode() != 0) {
+                        log.error("error=>" + resp.getMessage() + " sid=" + resp.getSid());
+                        return;
+                    }
+                    if (resp.getData() != null) {
+                        String audioResult = resp.getData().getAudio();
+                        audio.append(audioResult);
+                        byte[] audio = Base64.getDecoder().decode(audioResult);
+                        try {
+                            os.write(audio);
+                            os.flush();
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                        if (resp.getData().getStatus() == 2) {
+                            // resp.data.status ==2 说明数据全部返回完毕，可以关闭连接，释放资源
+                            webSocket.close(1000, "");
+                            try {
+                                new File(tmpDestPath).createNewFile();
+                                os.close();
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    }
+                }
+            }
+
+            @Override
+            public void onMessage(WebSocket webSocket, ByteString bytes) {
+                super.onMessage(webSocket, bytes);
+            }
+
+            @Override
+            public void onClosing(WebSocket webSocket, int code, String reason) {
+                super.onClosing(webSocket, code, reason);
+            }
+
+            @Override
+            public void onClosed(WebSocket webSocket, int code, String reason) {
+                super.onClosed(webSocket, code, reason);
+                System.out.println("socket closed");
+            }
+
+            @Override
+            public void onFailure(WebSocket webSocket, Throwable t, Response response) {
+                super.onFailure(webSocket, t, response);
+                log.error("connection failed");
+                log.error(t.getMessage());
+            }
+        });
+        long start = System.currentTimeMillis();
+        // 使用临时文件的方式判断 链接 是否关闭 ，如果判断 voicePlayResultStr 这个字段，本地可以，但服务器不可以
+        try {
+            while (!new File(tmpDestPath).exists()) {
+                long end = System.currentTimeMillis();
+                if ((end - start) > timelimit * 1000) {
+                    result.setMsg("语音服务请求超过" + timelimit + "s");
+                    return result;
+                }
+                Thread.sleep(1);
+            }
+        } catch (InterruptedException e) {
+            log.error(e);
+        }
+// 进行response流式返回
+        try {
+//            FileInputStream fileInputStream = new FileInputStream(f);
+//            InputStream fis = new BufferedInputStream(fileInputStream);
+//            byte[] buffer = new byte[fis.available()];
+//            fis.read(buffer);
+//            fis.close();
+            out.write(Base64.getDecoder().decode(audio.toString()));
+            out.flush();
+            out.close();
+            //删除数据源文件、临时文件，本地调试可去掉该行代码
+//            f.delete();
+            new File(tmpDestPath).delete();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        SocketServer socketServer = SpringUtils.getBean(SocketServer.class);
+        socketServer.sendMessageByWebId(cid, message);
+        return null;
+    }

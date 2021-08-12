@@ -170,6 +170,93 @@ private static boolean shouldParkAfterFailedAcquire(Node pred, Node node) {  // 
     // 该方法在正常的 lock方法中基本上没有什么意义。但在 lockInterruptibly 方法中，接着调用了doAcquireInterruptibly方法，如果当前线程被打断，则会抛出被打断的异常。同时，如果上锁是调用的是 lockInterruptibly 方法，那么当被interrupt的时候，会直接被唤醒
     private final boolean parkAndCheckInterrupt() {
         LockSupport.park(this);
+        // 当解锁调用unpark成功之后，会返回当前线程的中断状态，但为了保持中断状态一致，accquire方法中，还调用了selfInterrupt() 方法，重新标记当前线程的中断状态
         return Thread.interrupted();
     }
+```
+
+
+---
+
+解锁:
+	解锁会调用unlock方法，然后调用对应的 sync.release(1) 的方法
+
+```java
+	// 对reentrantlock解锁
+	// AbstractQueuedSynchronizer 类
+	public final boolean release(int arg) {
+        if (tryRelease(arg)) { //首先尝试释放锁，释放成功则进入代码块
+            Node h = head; // 记录头节点
+            // 此处分为几种情况
+            // 1. 如果aqs队列还没有初始化，即只有一个线程在获取锁，那么直接返回true (h!=null不成立)
+            // 2. 如果 h!=null ，那么代表此时aqs中有节点在等待，
+            // 		如果 h节点的waitStatus = -1 ,则代表线程正在park，需要唤醒，则进入unparkSuccessor方法
+            //		如果 h节点的waitStatus = 0 ，表示队列中只有一个 头节点，其他节点还未加入队列中，那么其他线程可以直接获得锁
+            if (h != null && h.waitStatus != 0)
+            // 对满足条件的节点进行unpark操作
+                unparkSuccessor(h);
+            // 只要尝试释放锁成功，就会返回true
+            return true;
+        }
+        // 如果尝试释放锁失败，直接返回false
+        return false;
+    }
+    
+    
+    // 尝试释放锁
+    // ReentrantLock类中 ， releases = 1
+    protected final boolean tryRelease(int releases) {
+    		// 获取减完之后的state状态
+            int c = getState() - releases;
+            // 该if表示，如果当前执行unlock的线程 不等于 占有锁的线程，抛出违法异常。出现这种情况的原因可能是 线程t2中的reentrantlock 没有上锁，就进行了解锁
+            if (Thread.currentThread() != getExclusiveOwnerThread())
+                throw new IllegalMonitorStateException();
+            // 记录释放是否成功
+            boolean free = false;
+            // c==0,锁释放成功，设置当前占有的锁的线程为null
+            if (c == 0) {
+                free = true;
+                setExclusiveOwnerThread(null);
+            }
+            // 重新设置state。如果 计算 完 c 仍然大于0 ，那么是重入状态，继续进行解锁即可
+            setState(c);
+            return free;
+        }
+        
+        // 进行线程节点 的unpark，其中参数node是当前aqs队列的头节点
+        // AbstractQueuedSynchronizer 类
+  private void unparkSuccessor(Node node) {
+        /*
+         * If status is negative (i.e., possibly needing signal) try
+         * to clear in anticipation of signalling.  It is OK if this
+         * fails or if status is changed by waiting thread.
+         */
+         // 头节点的ws状态
+        int ws = node.waitStatus;
+        // 如果ws 小于 0 ，即 -1 ，则将节点的ws更改为0
+        if (ws < 0)
+            compareAndSetWaitStatus(node, ws, 0);
+
+        /*
+         * Thread to unpark is held in successor, which is normally
+         * just the next node.  But if cancelled or apparently null,
+         * traverse backwards from tail to find the actual
+         * non-cancelled successor.
+         */
+         // 获取头节点的下一个节点
+        Node s = node.next;
+        // 下一个节点为空或者节点的 ws 大于0 ，执行以下代码，会从队尾中拿ws小于0 的节点
+        // 下一个节点为空，那么就是队列中只有一个头节点，没有其他节点
+        // 下一个节点不为空，并且 对应节点的 ws 值 大于0 ，ws大于0只有 取消状态 才有(CANCELLED =  1),这两个条件出现的情况都比较苛刻，一般不太会出现
+        if (s == null || s.waitStatus > 0) {
+            s = null;
+            for (Node t = tail; t != null && t != node; t = t.prev)
+                if (t.waitStatus <= 0)
+                    s = t;
+        }
+        // 如果 下一个节点不为空，那么唤醒下一个线程，调用unpark方法，
+        if (s != null)
+            LockSupport.unpark(s.thread);
+    }
+
 ```

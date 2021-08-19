@@ -390,3 +390,5 @@ point5: 单线程执行，和aqs没有关系，不会实例化aqs队列
        如果是t1和t2永远存在竞争
 
 point6: waitStatus: 仅仅是一个状态 ， 加锁和解锁都会用到
+
+point7: -XX:+UnlockDiagnosticVMOptions -XX:+PrintAssembly作为启动参数，就可以查看汇编指令

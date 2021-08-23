@@ -390,5 +390,115 @@ point5: 单线程执行，和aqs没有关系，不会实例化aqs队列
        如果是t1和t2永远存在竞争
 
 point6: waitStatus: 仅仅是一个状态 ， 加锁和解锁都会用到
+        reentrantlock中的可中断锁，调用park线程的interrupt方法会发生取消线程 的操作，意味着将waitstatus设置为 1
+        当aqs中有一个节点被取消的时候，会从队尾 向前 循环拿出节点 ， 知道拿出的节点和当前的节点相等，下一个节点就是这次要唤醒的节点
+
+读写锁  ReentrantReadWriteLock 实现了 ReadWriteLock 接口，并添加了可重入 的特性。ReadWriteLock适合读多写少的情况
+(实现一个读多写少的缓存)
+point1:  读读并行
+         读写串行
+         写写串行
+
+point2: 读写锁中，相当于一个 对象中，维护了两把锁，一把锁是读锁，一把锁是写锁。那么为什么要维护两把锁呢？
+        如果 读锁 和写锁 分别对应两个对象，那么当一个线程要 同时 使用读锁和写锁的时候，就相当于两个对象的锁，
+        因为如果在线程使用的时候，针对线程A ，既上读锁，又上 写锁，那么就是两个对象了，就不能报证锁同一个对象了？
+
+point3: 读写锁可重入，可降级(可以由写锁 降级 为读锁 ，但不可升级) ， 支持condition ， 读锁和写锁的过程中支持中断
+        锁的降级指的是 可以 先调用 write锁，然后在不调用unlock方法的情况下，就可以直接调用 read锁。不用调用unlock的原因是为了防止二次排队
+        锁的升级指的是 先调用 read锁，再不调用unlock方法的情况下，接着调用write锁。读写锁是不可以升级的，由于读写锁涉及的可并发读，如果可以升级，那么当多个并发读发生的时候，
+                      有多个锁升级为了写锁，需要其他锁释放锁，就会可能造成 a线程等待b线程释放锁，b线程等待a线程释放锁，导致死锁
+
+        StampedLock 性能之王的读写锁
+
+point4: 源码
+
+    writelock.lock方法
+
+    public final void acquire(int arg) {
+            if (!tryAcquire(arg) &&
+                acquireQueued(addWaiter(Node.EXCLUSIVE), arg))
+                selfInterrupt();
+        }
+
+    protected final boolean tryAcquire(int acquires) {
+                /*
+                 * Walkthrough:
+                 * 1. If read count nonzero or write count nonzero
+                 *    and owner is a different thread, fail.  // 如果读锁的数量是非零的，或者写锁是非零的，并且 锁的持有线程不是当前线程，则失败
+                 * 2. If count would saturate, fail. (This can only
+                 *    happen if count is already nonzero.)
+                 * 3. Otherwise, this thread is eligible for lock if
+                 *    it is either a reentrant acquire or
+                 *    queue policy allows it. If so, update state
+                 *    and set owner.
+                 */
+                Thread current = Thread.currentThread();
+                int c = getState();
+                int w = exclusiveCount(c);
+                if (c != 0) {  // 锁正在被持有，判断线程是否可重入。
+                    // (Note: if c != 0 and w == 0 then shared count != 0)
+                    // w==0，代表没有写锁 ， !=0 代表有写锁，返回false
+                    // 判断当前锁的线程是不是当前线程 , 线程相等，返回false
+                    // 如果该条件返回了最终走的return，那么代表 没有写锁并且线程不相等，相当于获取写锁失败
+                    // 有写锁( w != 0) 或者进入的线程和锁持有的线程相等，都不会进这个if
+                    //  w==0,c != own 整体返回true   无写锁，线程不同
+                    //  w!=0,c != own 整体返回true 有写锁，线程不同
+                    //  w==0,c == own 整体返回true  无写锁，线程相同
+                    //  w!=0,c == own 整体返回false 有写锁，线程相同,在会进行线程的冲入
+                    if (w == 0 || current != getExclusiveOwnerThread())
+                        return false;
+                    // 锁的次数不能超过最大次数
+                    if (w + exclusiveCount(acquires) > MAX_COUNT)
+                        throw new Error("Maximum lock count exceeded");
+                    // Reentrant acquire
+                    // 读锁 未被获取，写锁线程重入
+                    setState(c + acquires);
+                    return true;
+                }
+                // 只有c==0 的时候，才会走这个步骤，相当于，锁没有被线程占用，进行锁的竞争
+                // 判断写锁是不是应该被阻塞，是否应该被加入到等待队列中 || cas加锁
+                if (writerShouldBlock() ||
+                    !compareAndSetState(c, c + acquires))
+                    return false;
+                setExclusiveOwnerThread(current);
+                return true;
+            }
+
+
+        static final int SHARED_SHIFT   = 16;
+        static final int SHARED_UNIT    = (1 << SHARED_SHIFT);
+        // 最多支持65535个读锁和65535个写锁，低16位表示写锁计数，高16位表示持有读锁的线程数
+        static final int MAX_COUNT      = (1 << SHARED_SHIFT) - 1;
+        // 写锁的掩码，用于状态的低16位
+        static final int EXCLUSIVE_MASK = (1 << SHARED_SHIFT) - 1;
+
+        /** Returns the number of shared holds represented in count  */  读锁，高16位
+        static int sharedCount(int c)    { return c >>> SHARED_SHIFT; }
+        /** Returns the number of exclusive holds represented in count  */ 写锁，低16位
+        static int exclusiveCount(int c) { return c & EXCLUSIVE_MASK; }
+
+    static final class FairSync extends Sync {
+            private static final long serialVersionUID = -2274990926593161451L;
+            final boolean writerShouldBlock() {
+                return hasQueuedPredecessors();
+            }
+            final boolean readerShouldBlock() {
+                return hasQueuedPredecessors();
+            }
+        }
+
+
+point7: 读锁中调用 newCondition方法会直接包错，但是写锁可以调用 newCondition方法。因为conditiont一定要是排他的。
+        条件锁要求是排他的，因为条件锁有一个临界点，在共享锁里面是永远达不到的
+
+point8:
+    读锁，为什么要记录第一个 firstReader , firstReaderHoldCount 。 可以理解为 为了追求 更高效 的运行效率
+    HoldCounter cachedHoldCounter 读锁的缓存；成功获取ReadLock的最后一个线程的保持计数  最后一个线程的data缓存 ,记录线程ID，记录最后一个线程最后加了几次锁
+    ThreadLocalHoldCounter readHolds;当前线程持有的可重入锁的数量
+
+
+
+JMM
+
 
 point7: -XX:+UnlockDiagnosticVMOptions -XX:+PrintAssembly作为启动参数，就可以查看汇编指令

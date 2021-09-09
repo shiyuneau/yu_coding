@@ -1,0 +1,792 @@
+
+G:\working_space\common_project>G:\javaSoft\Java\jdk1.8.0_131\bin\javap -verbose G:\working_space\common_project\thread_coding\target\classes\coding\Add.class
+没有GC
+total=123.0
+free=117.74468994140625
+max=1796.0
+
+GC之后
+total=123.0
+free=119.68526458740234
+max=1796.0
+
+加了int再GC
+total=123.0
+free=121.6852798461914
+max=1796.0
+
+加了int不GC
+total=123.0
+free=117.74468994140625
+max=1796.0
+useserialgc
+
+
+
+point1: 
+es mapping验证相关(es mapping的设置一般只需要增加，而不需要更新。更新的话需要先移除数据，再重新设置mapping，然后再进行索引)
+步骤如下:(通过RestHighLevelClient，可以再创建索引的时候就制定对应的mapping类型，不一定要先创建一条数据)
+    1.创建一个索引
+        POST mapping_test2/_doc
+        {
+          "field":"one"
+        }
+    2.配置动态配置mapping关闭
+        PUT mapping_test2/_mapping
+        {
+          "dynamic":"false"
+        }
+    3.针对该索引，手动添加一个mapping
+        PUT mapping_test2/_mapping
+        {
+          "properties":{
+            "field_3":{
+              "type" : "text",
+                  "fields" : {
+                    "keyword" : {
+                      "type" : "keyword",
+                      "ignore_above" : 256
+                    }
+                  }
+            }
+          }
+        }
+    4.再添加一条field_3的数据
+        POST mapping_test2/_doc
+        {
+          "field_3":"three"
+        }
+    5.搜索field_3,可以正常搜索出结果
+        GET mapping_test2/_search
+        {
+          "query": {
+            "match": {
+              "field_3": "three"
+            }
+          }
+        }
+    6.如果直接添加一条field_2的数据，那么使用match搜索，搜索不到，就算是再次添加field_2对应的mapping，也match不到对应的数据。针对这种情况只能重新索引
+
+point2:
+    5.0之前，es的字符串类型使用string ，在5.0之后采用text代替string，默认256个字符。并且新增了对应text的keyword关键字。
+    实际上 text和keyword是两个类型，text关键字会进行分词，走分析的流程，支持模糊、精确查询，但不支持聚合。keyword不会进行分词，不走分析，直接索引，也可模糊、精确查询，支持聚合
+    取消了index的analyzed,not_analyzed,no关键字，现在index只能使用true或者false。
+    index = true，代表es会为该属性创建分词，可以当作主查询条件 (默认为true)
+    index = false,代表es不会为该属性创建分词，不能当作主查询条件。  如果一个字段 的index 设置为false，那么当在该字段上进行索引查询的话会报错
+
+    5.0之后 filtered被bool代替。 这种情况还会计算得分，只有单独的filter的时候，才不会计算得分。。(按网上的说法都是过滤器 先执行，在计算query，不会计算得分，但这里好像不是这个问题，还是会计算得分)
+    原filtered写法
+    GET _search
+    {
+      "query": {
+        "filtered": {
+          "query": {
+            "match": {
+              "text": "quick brown fox"
+            }
+          },
+          "filter": {
+            "term": {
+              "status": "published"
+            }
+          }
+        }
+      }
+    }
+    现在 bool的写法: 
+    GET _search
+    {
+      "query": {
+        "bool": {
+          "must": {
+            "match": {
+              "text": "quick brown fox"
+            }
+          },
+          "filter": {
+            "term": {
+              "status": "published"
+            }
+          }
+        }
+      }
+    }
+
+
+
+
+    关于text 的keyword 。keyword代表是否进行分词。当对 字符串进行查询的时候，不加 keyword,会进行分词的查询，加上keyword 会进行不分词 的查询。如下
+        1.创建一个字段
+        POST mapping_test2/_doc
+        {
+            "field_7":"seven test"
+        }   
+
+        2.使用keyword查询，结果为null ， 去掉keyword查询，可以查出刚才插入的结果
+        GET mapping_test2/_search
+        {
+          "query": {
+            "match": {
+              "field_7.keyword": "test"
+            }
+          }
+        }
+
+point3: 
+    2.0的时候，浮点数默认的类型是double ，5.0更新后默认使用float。相对于double，可以降低存储需求。但有些情况下需要使用double，就要在mapping中手动指定double
+
+point4:
+    针对日期类型，es会解析这个字符串，然后将其作为long的整数存入lucene的索引。(从1970-1-1 utc时间，毫秒)，搜索文档时，如果提供的也是date的字符串，es也会解析为数值来处理
+
+point5:
+    es 中不存在所谓的更新操作，其更新操作都是用心的文档替换旧的文档。可以使用下面的语句进行更新(index/type/id/_update)，但也都是用新文档替换旧文档。同时还可以使用脚本(Groovy)进行更新
+        POST mapping_test2/_doc/VFlNn3sB-z8hYu2zYVFZ/_update
+        {
+          "doc":{ 
+            "field_7":"seven update"
+          }
+        }
+    upsert代表如果更新的文档不存在的话，会初始化一个新的文档
+        POST mapping_test2/_doc/VFlNn3sB-z8hYu2zYVFZ/_update
+        {
+          "doc":{ 
+            "field_7":"seven update"
+          },
+          "upsert":{
+            "":"",
+            "":""
+          }
+        }
+
+point6:
+    删除索引 就是移除了 和索引分片相关的文件。和删除单独的文档相比，删除文件系统中的文件更快。
+    分段:
+        一个分段是建立索引的时候所创建的一块Lucene索引(即分片)。当索引新文档时，内容不会添加到分段的尾部，而只会创建新的分段。由于删除操作只是将文档标记为待删除，所以分段中的数据不会被移除。最终，更新文档意味着重新索引，数据永远不会被修改。
+        当es再分片上进行查询的时候，lucene需要查询所有的分段，合并结果，然后将其返回。分片越多，分段越多，搜索请求越慢。  日常的索引操作会产生很多这样的小分段。为了避免索引中存在过多的分段，lucene定期将分段进行合并
+    合并:
+        读取文档的内容(除了被删除的文档)，利用组合的内容 创建新的，更大的分段。需要CPU和磁盘IO。合并操作是异步运行的。
+
+point7:
+    过滤器只是为了 文档是否匹配这个查询，返回 是 或者 否。但查询是为了计算得分。使用term查询，得分的结果都是1.0
+    过滤器的查询要比普通的查询快，而且还可以被缓存
+
+    在一个查询语句中，先使用query，然后使用filter，会进行score得分排名
+    对查询的一个说明:
+        GET bdms_index_462_t_sp_gas_area_discharge/_search
+        {
+          "query": {
+            "match": {
+              "cityname": "贵阳市"
+            }
+          }, 
+          "post_filter": {
+            "term": {
+              "regionname": "区"
+            }
+          }
+        }
+        es 会建立一个 位集合(bitset) ，es会根据这个位集合进行过滤，根据搜索的查询部分，排除掉不应该被搜索的文档。过滤器限制了需要计算得分的文档数量，根据查询，仅仅有限的文档集合才需要计算得分。过滤器还可以用于另外的搜索请求。
+        如果es可以预见过滤器不会在被使用，或者位集合重新创建的成本微乎其微，那么过滤器不会自动被缓存。
+
+point8:
+    如果指定了排序字段，那么_score字段将失效(不会按照得分进行排序)，_score就为null
+
+point9: 各种查询的使用场景和举例
+    
+    更推荐的是使用过滤器查询，一个是不会计算得分，然后 如果过滤器多次被使用，还会对其进行缓存
+
+    1.match_all 匹配所有的文档，后面可以接 term 过滤的条件，得分会被忽略，但一般不太使用的
+        GET bdms_index_462_t_sp_gas_area_discharge/_search
+        {
+          "query": {
+            "match_all": {
+            }
+          }, 
+          "post_filter": {
+            "term": {
+              "regionname": "区"
+            }
+          }
+        }
+    2.query_string 通过url _search?q=test  这种就是使用的query_string的查询，该查询会查询_all字段(默认所有字段组合而成)(_all 在7.0之后被移除)。如果要修改成查询某个字段，可以使用default_field.
+        同时 通过query_string ,还可以使用 and or 等操作。query_string不仅简单而且强大， 但是当查询条件多时，阅读上就会比较费力，而且直接通过url查询会导致es集群的风险太高，所以一般建议使用term，terms，match或者multi_match进行查询
+    3.term和term过滤器
+        单独使用term也可以进行查询，会计算得分。(但这个和match_all有啥区别呢？term 不会进行大小写的转换，大写就还是大写，但是match会进行 大写转小写)
+            GET bdms_index_462_t_sp_gas_area_discharge/_search
+            {
+              "query": {
+                "term": {
+                  "regionname": {
+                    "value": "白云"
+                  }
+                }
+              }
+            }
+        term过滤器，使用term过滤器可以用来限制结果文档，使其包含指定的词条，而且无需计算得分(该语句中，如果不带有query不会计算得分，带有query会计算得分，如果match换成match_all，也不会计算得分(可能是因为match_all也是返回所有文档))
+            GET bdms_index_462_t_sp_gas_area_discharge/_search
+            {
+              "query": {
+                "match": {
+                  "cityname": "贵阳市"
+                }
+              }, 
+              "post_filter": {  // post_filter 查询之后过滤
+                "term": {
+                  "regionname": "区"
+                }
+              }
+            }
+    4.terms标签
+        terms标签可以查询多个标签，如下，查询 字段中，含有 区 或者 明 的文档
+        GET bdms_index_462_t_sp_gas_area_discharge/_search
+        {
+            "post_filter": {
+            "terms": {
+                "regionname": ["区","明"]
+                }
+            }
+        }
+        可以通过minimum_should_match参数来强制规定每篇文档中匹配词条的最小数量
+        针对 minimum_should_match ，有匹配的一套规则
+    5.match查询
+        match查询是一个散列映射，包含了希望搜索的字段和字符串。match可以有多种行为方式，最常见的是boolean和词组(phrase)
+        布尔查询   。 如果单独使用 match，不加布尔，那么会查询service或before只要存在一个就可以的结果。当使用operator=and时，查询的结果就是 两个词都含有的结果
+            GET mapping_test3/_search
+            {
+              "query": {
+                "match": {
+                  "field_7": {
+                    "query":"service before",
+                    "operator": "and"
+                  }
+                  
+                }
+              }
+            }
+        词组查询  如果只知道一个或两个单词，可以通过词组的方式进行查询(由于英文中存在空格的行为，这个可以进行类似于模糊的查询)使用slot=1或者2(不加的话默认是0) 代表词之间是有间隔的
+        GET mapping_test3/_search
+        {
+          "query": {
+            "match_phrase": {
+              "field_7": { 
+                "query":"service before",
+                "slop":1
+              }
+              
+            }
+          }
+        }
+
+        match和match_phrase性能对比: match query 比 match_phrase 的性能要高 10 倍，比 proximity match（带slop的）性能要高20倍;match_phrase 据说比 term 查询慢 20 倍。还是建议使用match
+
+        词组前缀查询 : match_phrase_prefi会根据词组中最后一个词条进行前缀匹配。通过max_expansions来设置最大的前缀扩展数量。下面实例中的service7 ser可以查到，但是换成servi7 ser就不会查到了，要保证前面的词是完全匹配的才可以
+        GET mapping_test3/_search
+        {
+          "query": {
+            "match_phrase_prefix": {
+              "field_7": { 
+                "query":"service7 ser",
+                "max_expansions":3
+              }
+              
+            }
+          }
+        }
+
+        匹配多个字段: multi_match可以用来匹配多个字段
+        GET mapping_test3/_search
+        {
+          "query": {
+            "multi_match": {
+                "query":"service7 ser",
+                "fields":["field_6","field_7"]
+            }
+          }
+        }
+    6.bool查询
+        bool查询可以任意组合查询的数量，内部包含must(必须匹配)，should(至少包含minimum_should_match个数的条件)，must_not(必须移除，不包含)三种条件。should可以在一定条件下改成terms语句，并行写在must语句中
+        每个选项的内部，可以有多个条件，继续写term，match等条件
+        GET mapping_test3/_search
+        {
+          "query": {
+            "bool": {
+              "must": [
+                {
+                  "term": {
+                    "FIELD": {
+                      "value": "VALUE"
+                    }
+                  }
+                },
+                {
+                  "match": {
+                    "FIELD": "TEXT"
+                  }
+                },
+                {
+                  "multi_match": {
+                    "query": "",
+                    "fields": []
+                  }
+                }
+              ],
+              "should": [
+                {},
+                {}
+              ],
+              "must_not": [
+                {}
+              ],
+              "minimum_should_match": 1
+            }
+          }
+        }
+
+        bool过滤器: 相当于使用过滤的条件下使用 bool
+        GET /lib4/items/_search
+        { 
+          "post_filter":{
+            "bool":{
+              "should":[
+               {"term": {"itemID.keyword": "ID100124"} },
+               {"term":{"price":25}}
+                ],
+                "must_not":{"term":{"price":50}}
+            }
+          }
+        }
+
+    7.range查询 : 查询介于一定范围的值，适用于 数字、日期和字符串    ，需要指定 上届和下届值 (对于时间的查询还是有问题，入库的时间是有8小时时间间隔的，但查询如果按照正常得事件，range查询会将那部分数据省略掉)
+        GET bdms_index_380_summarydata/_search
+        {
+          "query": {
+            "range": {
+              "IndicatorDate": {
+                "gte": "2016-12-31",
+                "lte": "2017-01-05"
+              }
+            }
+          }
+        }                                                                                                                                                                                                   
+
+    8.wildcard查询
+        类似于shell 的通配符的查询方式。* 匹配任何字符序列 ， ? 匹配一个单独字符。但这个应该也慎用，因为匹配的话，会从 通配符之前的值开始查找子集，前缀越多，子集越小，效率越高。使用的收需要考虑到额外开支和性能
+        GET bdms_index_462_t_sp_gas_area_discharge/_search
+        {
+          "query": {
+            "wildcard": {
+              "regionname": {
+                "value": "白?区"
+              }
+            }
+          }
+        }                                                                                                                                                                                                  
+
+point10: 分析数据
+    在文档被发送至倒排索引之前，es在其主体上进行的操作，可能包含以下步骤:
+        (以 share experience with NoSql & big technologies 为例)
+        input -> characterFilters(字符过滤器) -> tokenizer(分词器) -> TokenFilters(分词过滤器)[0个或多个] -> output 
+
+        字符过滤:  使用字符过滤器转变字符
+            通过分词 过滤器 & => and 将内容转换成  share experience with NoSql and big technologies
+
+        文本切分为分词: 将文本切分为单个或多个分词
+            将上一步的内容按标准分词器分词，分成一个一个的单词
+
+        分词过滤: 使用分词过滤器转变每个分词
+            分词过滤器可以是一个链，包含多个分词过滤:
+                常用的有 小写 转换，停用词，同义词 等, 最后被分为： share experience with nosql  big technologies tools
+
+        分词索引:  将分词存储到索引中       
+
+        除了分词索引，上面三个步骤可以为一个定制分析器，该分析其可以由自己定制 
+
+    可以在创建索引的时候，通过 analysis代码块设置具体的分析器。如下。该例子中就是在index索引下设置了该索引的analyzer(分析器)是ik分析器。es默认提供了 standard , english ,stop , lower等分析器，也可以自定义自己的分析器
+        PUT /my_index
+        {
+            "settings": {
+                "analysis": {
+                    "char_filter": {
+                        "&_to_and": {
+                            "type":       "mapping",
+                            "mappings": [ "&=> and "]
+                    }},
+                    "filter": {
+                        "my_stopwords": {
+                            "type":       "stop",
+                            "stopwords": [ "the", "a" ]
+                    }},
+                    "analyzer": {
+                        "my_analyzer": {
+                            "type":         "custom",
+                            "char_filter":  [ "html_strip", "&_to_and" ],
+                            "tokenizer":    "standard",
+                            "filter":       [ "lowercase", "my_stopwords" ]
+                    }}
+        }}}
+    也可以在es的配置中设置分析器，在 elasticsearch.yml中配置
+
+    使用_analyze 可以查看分词器将文本分成了什么样的内容
+    GET /_analyze
+    {
+      "tokenizer": "standard",
+      "filter": ["lowercase"],
+      "text": ["hello Good Me"]
+    }
+    GET /_analyze
+    {
+      "tokenizer": "ik_smart",
+      "text": ["我不知道的你是什么样子的，你爱我吗"]
+    }
+
+point11: 分析器、分词器、分词过滤器
+    1.内置的分析器:( analyzer )
+        标准分析器(standard,默认的文本分析器)，包括了 标准分词器，标准分词过滤器，小写转换分词过滤器和停用词分词过滤器
+        简单分析器(simple) 只使用了小写转换分词器。意味着非字母出分词，分词转换成小写
+        空白分析器(whitespace) 只是根据空白将文本分为若干个分词
+        停用词分析器(stop) 和简单分析器行为很像，只是在分词流中额外的过滤了停用词
+        关键词分析器(keyword) 将整个字段当作一个单独的分词。最好是将index设置为false，而不是在映射中使用关键词分析器
+        模式分析器(pattern) 允许指定一个分词切分的模式
+        语言和多语言分析器: 支持许多能直接使用的特定语言分析器，可以使用语言的名字来指定
+        雪球分析器(snowball) 标准分词器和分词过滤器，还有小谢粉刺过滤器和停用词过滤器。还是用雪球词干器对文本进行词干提取
+    2.内置的分词器 (tokenizer)
+        标准分词器(standard) 基于语法的分词器，对于欧洲语言很不错。分词默认的最大长度是255
+        关键词分词器(keyword) 将整个文本作为单个的分词，提供给分词过滤器。(如 想要分词 Hi,here,使用该分词器的结果还是 Hi,here)
+        字母分词器(letter) 根据非字母的符号切分
+        小写分词器(lowercase) 结合常规的字符分词器和小写分词过滤器(分词后，会将结果转换为小写)
+        空白分词器(whitespace) 通过空白分词
+        模式分词器(pattern) 指定任意的模式切分
+        UAX，URL电子邮件分词器
+        路径层次分词器(path hierarchy) 以特定的方式索引文件系统的路径。搜索时，共享同样路径的文件将被作为结果返回
+    3.分词过滤器(filter)
+        标准(standard) 基本上没做什么事情，就是去除单词结尾的 's 和不必要的句点字符，而且还是在很老版本的lucene中，现在已经被其他分词过滤器处理了
+        小写(lowercase) 字符变小写
+        长度(length) 将长度超出最短和最长限制范围的单词过滤掉
+        停用词(stopword) 将停用词从分词流中移除  可以通过 analysis下的fitlter构建，可以指定几个字符串，也可以指定一个文件
+        同义词(synonym) 找出分词的同义词
+        截断(trunate) 默认截断多于10个字符的部分
+        修剪(trim) 删除反此种的所有空白部分
+        限制分词数量(limit token count) 限制某个字段可包含分词的最大数量。如果创建了一个定制的分词数量过滤器，限制是8，那么分词流中只有前8个分词会被索引 默认使用 max_token_count ，默认是1 ，只有一个分词会被索引
+
+point12: 提取词干
+    将单词缩减到基本或词根的形式 如 administrations ,其 词根 是 administr ，然用户匹配所有同样词根的单词。如 administrator,administration,administrate都是同一种词根
+    包括 算法提取词干(使用 snowball、porter stem、kstem过滤器)，字典提取词干，或者重写分词过滤器提取词干
+
+point13: N元语法过滤器
+
+
+
+es 打分机制
+详情可参考: https://www.cnblogs.com/jiangxinyang/p/10516302.html
+point14: 评分
+    词频(TF term frequency): 一个词条在该文档中出现的次数。如果 elasticsearch在文档1中出现的次数比在文档2中出现的次数多，那么文档2就比文档1的得分高
+
+    逆文档频率(inverse document frequency):
+        文档频率(df):一个单词在不同文档中出现的次数.(如果一个单词在一个文档中出现了3次，那他的文档频率也是1，该词频是3)
+        逆文档频率是 1/df 。 所以 文档频率约高，逆文档频率越低，权重就越低
+
+    评分公式:TF-IDF
+        给定查询 q 和 文档 d ，其得分是 查询中每个词条 t 的 得分总和。而每个词条的得分是该词在文档d中的词频的平方根，乘以该词逆文档频率的平方和，乘以该文档字段的归一化因子，乘以该次的提升权重 
+        score(query,document) = 
+        词条的词频越高，得分越高; 索引中词条越罕见，逆文档频率越高。
+        调和因子考虑了搜索过多少文档以及发现了多少词条。查询标准化是试图让不同查询的结果具有可比性
+        默认的 TF-IDF 打分方法是 由 TF-IDF和向量空间模型的结合
+
+    其他打分方法:(可以通过mapping修改某个字段映射中的similarity参数，在type下。还可以通过索引的setting设置similarity ，还可以在 es.yml中永久的配置索引使用其他的打分算法)
+        BM25 : es 7 之后，使用该评分机制为默认评分机制。 一种基于 概率的打分框架
+            bm25计算的分数可以认为是给定文档和查询匹配的概率。
+            该算法以能更好地处理短字段而著称
+            主要设置
+                k: 默认1.2 控制对于得分而言 词频(tf) 的重要性
+                b: 默认0.75。 介于0-1，控制了文档篇幅对于得分的影响程度
+                discount_overlaps: 默认 true ， 告知es，某个字段中，多个分词出现在同一个位置，是否应该影响长度的标准化
+
+
+boosting: 一个可以用来修改文档的相关性的程序，当索引或者查询文档的时候，可以提升一篇文档的的得分。索引期间修改文档的boosting是存储在索引中的，修改boosting的值需要重新索引文档。所以建议在查询的时候使用boosting，查询更灵活
+    boosting的数值并不是精确的乘数。在计算分数得时候，boost数值是被标准化 得。
+
+point15:索引期间得boost:
+        在mapping的时候就通过properties设置好boost
+            PUT mapping_test2/_mapping
+            {
+              "properties":{
+                "field_7":{
+                  "type" : "text",
+                  "boost":2.0
+                }
+              }
+            }
+        不建议使用boost索引得原因是：1.索引得boost是固定得，如果要修改这个值，必须重新索引；2.boost值是以低精度得数值存储在lucene中，计算文档的最终得分可能丢失精度；3.boost是运用于词条得，boost字段如果匹配了多个词条，就意味着多次得boost，会进一步增加字段得权重
+point16:查询期间的boost:
+        使用基本的match,multi_match,simple_query_string或者query_string查询时，可以基于某个词条或者某个字段来控制boost.
+        如下的 示例中，IndicatorDate 的boost大于 IndicatorArea,其最终的得分会比IndicatorArea拥有更大的影响力。
+            GET bdms_index_380_summarydata/_search
+            {
+              "from": 0,
+              "size": 200,
+              "query": {
+                "bool": {
+                  "filter": [
+                    {
+                      "bool": {
+                        "must": [
+                          {
+                            "term": {
+                              "IndicatorDate": {
+                                "value": "1483200000000",
+                                "boost": 2
+                              }
+                            }
+                          },
+                          {
+                            "term": {
+                              "IndicatorArea": {
+                                "value": "1483200000000",
+                                "boost": 1
+                              }
+                            }
+                          }
+                        ],
+                        "adjust_pure_negative": true,
+                        "boost": 1
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+        针对multi_match这种可以查询多个字段的来说，可以使用 ^ 来使用boost
+        GET bdms_index_462_acwf_hand_work_cooperative_manage/_search
+        {
+          "query": {
+            "multi_match": {
+              "query": "织金县",
+              "fields": ["address","name^2"]
+            }
+          },
+          "_source": {
+            "includes": ["address","name"]
+          }
+        }
+
+
+point17:使用explain来查看 具体的评分，分析匹配的规则，找出未能匹配的原因
+    GET bdms_index_462_acwf_hand_work_cooperative_manage/_search
+    {
+      "query": {
+        "multi_match": {
+          "query": "织金县",
+          "fields": ["address","name^2"]
+        }
+      },
+      "_source": {
+        "includes": ["address","name"]
+      },
+      "explain": true
+    }
+    explain的结果:
+            "hits" : [
+              {
+                "_shard" : "[bdms_index_462_acwf_hand_work_cooperative_manage][3]",
+                "_node" : "F2A5IO4VQUSUOGBiZ4Nykw",
+                "_index" : "bdms_index_462_acwf_hand_work_cooperative_manage",
+                "_type" : "_doc",
+                "_id" : "K6sAM3sB-z8hYu2zavit",
+                "_score" : 13.036671,
+                "_source" : {
+                  "address" : "毕节市织金县官寨乡大寨村",
+                  "name" : "织金县民艺制品厂"
+                },
+                "_explanation" : {
+                  "value" : 13.036671,      // 得分
+                  "description" : "max of:", // 描述 这个描述代表着是求details里面的最大值
+                  "details" : [
+                    {
+                      "value" : 6.984891,
+                      "description" : "sum of:", // 求detais里面的总和
+                      "details" : [
+                            {
+                              "value" : 2.328297,
+                              "description" : "weight(address:织金县 in 16) [PerFieldSimilarity], result of:",
+                              "details" : [
+                                {
+                                  "value" : 2.328297,
+                                  "description" : "score(freq=1.0), computed as boost * idf * tf from:",// 计算分值 的公式，boost，idf，tf都由下面的details来
+                                  "details" : [
+                                    {
+                                      "value" : 2.2,
+                                      "description" : "boost",
+                                      "details" : [ ]
+                                    },
+
+point18: function_score来定制得分
+    function_score 查询 允许用户指定任何数量的任意函数，让他们作用于匹配了初始查询的文档，修改其得分，从而达到精细化控制结果相关性的目的。
+    这种情况下，每种函数(function)是一个json小片段，以某种方式来影响得分
+    function_score 的基本使用语法。functions里面的function会作用在match匹配上的文档之上
+    GET bdms_index_462_acwf_hand_work_cooperative_manage/_search
+    {
+      "query": {
+        "function_score": {
+          "query": {
+            "match": {
+              "address": "织金县"
+            }
+          },
+          "functions": [ // 空的function_list
+           
+          ]
+        }
+      }
+    }
+    集中function_score中的函数:
+        1.weight函数: 将得分乘以一个常数。下面的例子时在address=织金县的基础上,name=企业的文档得分 * 2
+            GET bdms_index_462_acwf_hand_work_cooperative_manage/_search
+            {
+              "query": {
+                "function_score": {
+                  "query": {
+                    "match": {
+                      "address": "织金县"
+                    }
+                  },
+                  "functions": [
+                      {
+                        "weight": 2,
+                        "filter": {"term": {
+                          "name": "企业"
+                        }}
+                      }
+                  ]
+                }
+              }
+            }
+        2.合并得分:
+            针对函数的得分有两个:
+            a.从每个单独的函数而来的得分是如何合并的，score_mode: 可以指定score_mode参数，有 multiply ,sum,avg,first,max,min 。默认 每个函数的得分是相乘的。
+            b.得分合并:boost_mode.控制原始查询的得分和函数得分是如何合并的。如果没有指定，新的得分是初始查询得分和函数得分相乘。可设置为 sum,avg,max,min,replace(被函数得分替换)
+
+    字段数据:当需要在某个字段上进行排序或者聚集操作时，需要es快速匹配出每个文档哪个词条用于排序或者聚合，这对于es的倒排索引来说支持的不是很好，这个时候就涉及到字段数据
+        字段数据缓存是一种内存型的缓存。通常是在第一次需要使用时被构建，然后被保存用于不同的操作，如果是很多数据，那么第一次搜索会变得很慢。(预热器在这个时候就有了很大得用处)
+            字段数据缓存得必要:因为许多比较、分析得操作都会处理大量数据，想要快速完成这些操作最好得方式就是分文内存中得数据，所以使用了缓存，将数据存放在java堆空间之中
+        可以通过mapping设置 fielddata:true 来 设置字段 提前加载到缓存。不必等到第一次使用时才缓存。
+
+        字段数据的使用主要有以下场景:
+            按照某个字段进行排序，
+            在某个字段上进行聚集
+            在搜索请求中，使用fielddata_fields从字段数据来获取内容
+            function_score中，使用field_value_factor、decay函数
+            等
+        其中最常见的就是 排序和聚集
+
+        如何管理字段数据: 管理字段数据的目的是 避免集群中出现的问题，如 JVM垃圾回收花费太长时间，加载使用了过多内存导致OOM等。
+        具体的管理方式:
+            1.限制字段数据使用的内存量
+                将字段数据缓存限制在一个固定的大小。可以设置内存使用量的大小来限制，也可以通过设置字段数据在缓存里失效的过期时间来限制。
+                indices.fielddata.cache.size: 400mb  缓存大小 ，也可以设置 为 40% 百分比形式，让字段占用jvm堆的 40% 。 当设置了size之后，如果达到使用量的上限，将使用近期最少使用的策略(LRU)来淘汰数据
+                indices.fielddata.cache.expire: 25m  过期时间
+            2.使用字段数据的断路器
+                断路器的作用是为了避免将过多的数据加载到内存中。监控加载到内存中的数据容量，如果达到一定的上限，就启动。默认限制为JVM虚拟机堆大小的60%
+            3.使用文档值(doc value)来避免内存的使用。
+                在创建索引mapping 的时候，通过setting设置字段的文档时，doc_values=true/false
+                文档值 在文件被索引的时候，获取了将要加载到内存中的数据，并将他们和普通索引一起放到磁盘上。使用字段数据通常会使内存不够，而文档值可以从磁盘读取。优点如下:
+                    性能平滑下降: 文档值从磁盘读取，和其他索引一样。如果
+                    更高的内存管理:系统核心会将文档值缓存到内存中，避免了和堆使用相关的垃圾回收成本
+                    更快的加载: 通过文档值，索引的阶段会计算非倒排结构，即使是首次运行查询，es没必要进行动态的正向话
+                文档值的缺点:
+                    更大的索引规模: 将所有的文档值存储在磁盘，索引变大
+                    稍微变慢的索引过程: 索引阶段需要计算文档值，使得索引的过程变慢
+                    使用字段数据的请求，会稍微变慢: 磁盘比内存读取速度慢
+                    仅对非分析字段有效
+
+聚集(aggregation):
+    两个主要的类别:
+        度量型(metrics):是指一组文档的统计分析，可以得到最小值、最大值、标准差等度量值
+
+        桶型(bucket):将匹配的文档切分为一个或多个容器，告诉你每个桶里的文档书量
+    聚集的通用写法:
+        GET bdms_index_462_t_sp_gas_area_discharge/_search
+        {
+          "query": {                                    // 还可以在查询之后使用聚合
+            "match": {
+                "location": "Denver"
+            }
+          },
+          "from": 0,
+          "size": 0,                                    // 这两句将不展示hit命中的内容，不影响聚集的数量，聚集操作是在所有和查询相匹配的结果上执行的
+          "aggregations": {
+            "regionname": {                             // 聚合之后的名称，可以在请求的回复中看到这个名字
+              "terms": {                                // 指定聚集类型的词条     ，必须要使用terms
+                "field": "regionname.keyword",          // 使用字段的keyword形式，可以进行聚集操作
+                "size": 200,
+                "min_doc_count": 1,
+                "shard_min_doc_count": 0,
+                "show_term_doc_count_error": false,
+                "order": [                              // 默认的排序
+                  {
+                    "_count": "desc"
+                  },
+                  {
+                    "_key": "asc"
+                  }
+                ]
+              },
+              "aggregations": {                         // 还可以针对字段，进行聚集，此处是在select 中，查询的 count 的数量
+                "count": {
+                  "value_count": {
+                    "field": "_index"
+                  }
+                }
+              }
+            }
+          }
+        }
+
+集群扩展:
+1.向集群中加入节点
+    在同一个机器的不同目录或不同机器上启动　elasticsearch 启动脚本，就可以启动多个节点。当es 只有一个节点的时候，使用_cluster/health 查看, status是yellow，因为此时主节点已经分配，但是副本分片还没有。大于等于两个节点之后，status=green，此时尚未分配的副本分片就会分配到新的节点。大于一个节点之后，主要编号相同(同一份内容)的主分片和副本分片不在同一个节点上，那么并不禁止将主分片和副本分片放在同一个节点上。
+2.发现其他es节点
+    1. 广播
+        当es启动的时候，它发送广播(multicast)的ping请求到地址224.2.2.4的54328端口，而其他的es节点使用同样的集群名称响应了这个请求。所以要尽量保证 es 的  cluster.name 的 具体性。尽量不要使用默认的名称，以免加入其他的集群
+
+    2.单播
+        让es连接一系列的主机，并试图发现更多关于集群的信息。当节点的ip地址不会经常变化，或者es的生产系统只连接特定的节点而不是整个网络的时候，单播是很理想的模式。
+            通过elasticsearch.yml中设置 discovery.zen.ping.unicast.hosts:["",""]，来配置集群的单播地址。可以不必要将每个节点都配置所有的集群地址，满足口口相传的特点就行
+
+    3.选举主节点
+        一旦集群中的节点发现彼此，就会协商谁将成为主节点。主节点会负责管理集群的状态(当前的设置，集群中分片、索引、节点状态等)。主节点被选举出来后，会建立内部的ping机制来确保每个节点在急群众保持活跃和健康,其叫做错误识别(fault detection)
+        es 默认所有节点都有资格成为主节点，除非某个节点的 node.master设置为false。
+        设置主节点的最小数量，可以告诉es 在集群成为健康状态前，集群中多少个节点有资格成为主节点。如果节点数量不会变化，那么将最小数量设置为 集群的总节点数。如果节点数量会变化。设置为总节点数 除以 2 再 加1.
+        将minimum_master_nodes设置为高于1 的数量，可以预防集群产生脑裂的问题
+            引申问题: 造成脑裂的原因:
+                        1. 网络抖动 : 内网一般不会出现es集群的脑裂，外网出现脑裂的几率较大
+                        2.节点负载 : 如果主节点同时承担数据节点的工作，可能因为工作负载大导致对应的es实例停止响应
+                        3. 内存回收 : 由于数据节点上es 进程占用的内存较大，较大规模的内存回收也能造成es进程失去响应
+                    如何尽量避免脑裂:
+                        1.不要把主节点同时设为数据节点(node.master和node.data不要同时设置为true)
+                        2.将节点响应超时(discovery.zen.ping_timeout)稍稍设置时间长一些(默认3s)，避免误判
+                        3.设置需要超过半数的备选节点，才能发生主节点重选(discovery.zen.minimum_master_nodes = 半数以删备选主节点数)
+
+    4.错误的识别
+        当集群有两个节点(包括选举的主节点)之后，它需要和集群中的所有节点通信，以确保一切正常，这称为 错误识别的过程。主节点ping集群中所有其他的节点，而且每个节点也会ping主节点来确认无须选举。
+        每个节点间隔 discovery.zen.fd.ping_interval(默认1s)时间发送一个ping请求，等待discovery.zen.fd.ping_timeout(默认30s)得时间，并尝试ping_retries(默认3次)次，然后宣布节点失联，并且在需要的时候进行新的节点路由和主节点选举。
+3.删除节点
+    删除节点后，集群的状态会变为黄色，这个时候，正常的节点会将掉线节点的主分片的副分片转化为主分片(因为 索引的的操作首先会更新主分片)，然后会针对丢失的副本分片重新在 集群中创建新的副本分片
+4.停用节点
+    如果想关闭某个节点，同时保持集群为绿色状态，可以先停用节点，这个操作会将待停用节点的所有分片转移到集群中的其他节点
+    put _cluster/settings
+    {
+        "transient": {
+            "cluster.routing.allocation.exclude._ip" : "xxx.xx.xx.xx"
+        }
+    }
+5.升级es节点
+    1.轮流重启: 轮流执行以下步骤进行每个节点的升级
+        关闭集群的分配设置  cluster.routing.allocation.enable=none (由于直接关闭节点会进行副本的重新分配，但升级节点不需要重新分配，只需要将当前的节点转换为副本节点即可，所以需要关闭重新分配) 设置为 all开启分配
+        关闭即将升级的节点
+        升级节点
+        启动升级后的节点
+        等待升级后的节点加入集群
+        开启集群的分配设置
+        等待集群回复绿色的状态
+    2.最小化重启后的回复时间
+6.

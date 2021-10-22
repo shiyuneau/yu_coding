@@ -16,7 +16,7 @@
   > innodb引擎默认采用自动提交的方式提交事务，show variables like 'autocommit'可以看到value=on。可以使用 set autocommit=0 设置为手动提交，需要使用 start transaction; sql语句；commit来进行事务操作。但这种关闭是针对连接的，在一个连接中修改该值，不会影响其他连接的相关设置。
   
   
-  - ACID特性: ACID是衡量事务得四个特性
+  - ACID特性: ACID是衡量事务得四个特性 
     - 原子性(Atomicty) : 是指一个事务是一个不可分割的工作单位，其中的操作要么都做，要么都不做；如果事务中一个sql语句执行失败，则已执行的语句也必须回滚，退回到事务之前的状态。
     
     > #### 原子性的实现依靠 undo log（回滚日志）实现
@@ -64,7 +64,7 @@
       >
       > innodb存储引擎的数据最终都是存放在磁盘中，但每次读写数据都需要磁盘IO，效率低下。为此，innodb提供了缓存(Buffer Pool)，Buffer Pool中包含了磁盘中部分数据页的映射，作为访问数据库的缓冲: 当从数据库读取数据时，会先从Buffer Pool中读取，如果Buffer Pool中没有，则从磁盘读取后放入Buffer Pool；当写入数据时，会首先写入Buffer Pool，Buffer Pool中修改的数据会定期刷新到磁盘中(该过程称为刷脏)；
       > 
-      > Buffer Pool提高了读写数据的效率，但存在问题：如果mysql宕机，而此时Buffer Pool中修改的数据还没有刷新到磁盘，就会导致数据的修饰，事务的持久性无法保证
+      > Buffer Pool提高了读写数据的效率，但存在问题：如果mysql宕机，而此时Buffer Pool中修改的数据还没有刷新到磁盘，就会导致数据的丢失，事务的持久性无法保证
       > 
       > redo log被引入解决这个问题：当数据修改时，除了修改Buffer Pool中的数据，还会在redo log记录这次操作；当事务提交时，会调用fsync接口对redo log进行刷盘。如果mysql宕机，重启时可以读取redo log中的数据，对数据进行恢复。redo log采用WAL(write-ahead logging 预写式日志)，所有修改先写入日志，在更新到Buffer Pool，保证数据不会因为mysql宕机而丢失，从而满足持久性要求。
       > 
@@ -81,5 +81,4 @@
       - 层次不同: redo log是innodb存储引擎实现的，而binlog是mysql服务层的，同时支持其他存储引擎。
       - 内容不同: redo log是物理日志，内容基于磁盘的page;binlog的内容是二进制日志，根据binlog_format参数的不同，可能基于sql语句、基于数据本身或者二者的混合。
       - 写入时机不同: binlog在事务提交时写入；redo log的写入方式多元。
-  
   

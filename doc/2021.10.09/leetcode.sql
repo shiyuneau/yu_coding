@@ -17,7 +17,7 @@ END;
 
 # 对 Scores  表进行分数排名 leet code 178
 # rang,row_number,dense_rank都是mysql 8以上的函数
-SELECT score ,RANK() OVER(ORDER BY score DESC) FROM scores ; # 并列排名，并且跳过并列的顺序
+SELECT score ,RANK() OVER(ORDER BY score DESC) FROM scores ; # 并列排名，并且跳过并列的顺序,会出现并列
 
 SELECT score , ROW_NUMBER() OVER(ORDER BY score DESC) FROM scores; # 直接顺序排名
 
@@ -477,6 +477,18 @@ FROM salary_615 sa LEFT JOIN employee_615 em ON sa.employee_id = em.employee_id 
 ) p;
 
 
-
-
+-- leet code 618 学生地理信息报告 ******
+-- 根据原始数据，展示每个地区都有哪些学生
+-- 根据题目的评论分析对应做法
+-- 最后输出的行 分别是 亚洲、欧洲和美洲，所以肯定需要用到行转列
+-- 但问题时如何让name变成多行呢，这是个问题。这里使用 row_number()函数，按 地区 分组 记录每行的行号。
+-- 根据这个子查询，通过行号进行分组，在进行行专列的操作
+SELECT
+    MAX(IF(continent='America',NAME,NULL)) America,
+    MAX(IF(continent='Asia',NAME,NULL)) Asia,
+    MAX(IF(continent='Europe',NAME,NULL)) Europe
+FROM
+(
+SELECT * , ROW_NUMBER() OVER(PARTITION BY continent ORDER BY NAME) AS rk FROM student_618
+) p GROUP BY rk
 

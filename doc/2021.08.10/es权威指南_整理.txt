@@ -144,7 +144,7 @@ point4:
     针对日期类型，es会解析这个字符串，然后将其作为long的整数存入lucene的索引。(从1970-1-1 utc时间，毫秒)，搜索文档时，如果提供的也是date的字符串，es也会解析为数值来处理
 
 point5:
-    es 中不存在所谓的更新操作，其更新操作都是用心的文档替换旧的文档。可以使用下面的语句进行更新(index/type/id/_update)，但也都是用新文档替换旧文档。同时还可以使用脚本(Groovy)进行更新
+    es 中不存在所谓的更新操作，其更新操作都是用新的文档替换旧的文档。可以使用下面的语句进行更新(index/type/id/_update)，但也都是用新文档替换旧文档。同时还可以使用脚本(Groovy)进行更新
         POST mapping_test2/_doc/VFlNn3sB-z8hYu2zYVFZ/_update
         {
           "doc":{ 

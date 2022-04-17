@@ -45,13 +45,13 @@
     - beanFactory.addBeanPostProcessor(new LoadTimeWeaverAwareProcessor(beanFactory)) 设置对AspectJ的支持
     - 将相关环境变量及属性注册，以单例模式
   - postProcessBeanFactory 子类覆盖方法做额外的处理
-  - invokeBeanFactoryPostProcess 激活各种BeanFactory处理器 (未仔细看详细处理)
+  - invokeBeanFactoryPostProcess 激活各种BeanFactory处理器 (未仔细看详细处理) 实现流程中有 工厂方法的 getBean方法，实例化BeanFactory
   - registerBeanPostProcessors 注册拦截Bean创建的Bean处理器，只是注册，调用在getBean时
   - initMessageSource 为上下文初始化Message源，国际化处理
   - initApplicationEventMulticaster 初始化应用消息广播器
   - onRefresh 留给子类初始化其他的bean
   - registerListeners 在所有的bean中查找Listerner bean,注册到消息广播中
-  - finishBeanFactoryInitialization 初始化剩下的单实例(非lazy)
+  - finishBeanFactoryInitialization 初始化剩下的单实例(非lazy)  非抽象的、单例的、不是懒加载的  才可以被加载
     > ConversionService的配置、配置冻结、非延迟加载的bean的初始化工作
     ``` java
     protected void finishBeanFactoryInitialization(ConfigurableListableBeanFactory beanFactory) {
@@ -84,3 +84,6 @@
   - 抛出异常时，调用destroyBeans方法和cancelRefresh方法
 
 []: https://blog.csdn.net/qq_35190492/article/details/110383213
+
+- FactoryBean 是一个接口，第三方可以通过实现这个接口，重写 getObject方法 ，返回想要的bean。比如 mybatis、feign中 都是接口，那没有办法实例化
+那么就可以通过重写 getObject 方法，通过proxy代理的方式返回具体的bean  

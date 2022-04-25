@@ -121,4 +121,61 @@
     }
 
 	```
+---
+
+3.索引的不同集群之间复制
+	> 参考 https://www.jianshu.com/p/a968d544fbcc
+	> 数据量多的情况下，参考这个链接进行迁移 https://www.cnblogs.com/johnvwan/p/15645008.html
+
+	post请求
+	调用接口前，需要在目的集群中启用reindex白名单，在目标集群的配置中添加如下配置
+	reindex.remote.whitelist: http://<source cluster server>:<port> 
+```json
+http://<new cluster server>:<port>/_reindex
+
+{
+  "source": {
+    "remote": {
+      "host": "http://<source cluster server>:<port>/",
+      "username": "源集群用户名",
+      "password": "源集群密码"
+    },
+    "index": "源 index",
+    "query": {
+      "match_all": {}
+    }
+  },
+  "dest": {
+    "index": "目的 index"
+  }
+}
+```
+	
+可能会出现分片过少的错误，默认只有1000个shards，提高分片数量的方式
+	1. 控制台 (该方式重启之后会还原到默认)
+
+	```json
+	PUT /_cluster/settings
+		{
+			"persistent": {
+			"cluster": {
+				"max_shards_per_node":10000
+			}
+		}
+	}
+	```
+	
+	
+	2. 修改配置文件
+	# vim elasticsearch.yml
+	cluster.max_shards_per_node: 10000
+	
+	3. shell命令
+	curl -X PUT "192.168.1.107:9200/_cluster/settings" -H 'Content-Type: application/json' -d'
+	{
+	"persistent" : {
+	"cluster.max_shards_per_node" : "5000"
+	}
+	}
+
 

@@ -38,6 +38,9 @@ point3: 在子线程中，如果有方法调用，就会认为有方法溢出，
 		}
 	}
 	这种情况startthread也会停止
+	使用一个Integer变量++操作也会退出
+	volatile 修饰的 int 变量++(有可能 running 和int的值 在缓存行中，缓存行满了之后，需要重新获取))，volatile解决可见性，保证的是能否及时看到
+	空循环 优先级很高，时间片分配的很快，加入任何一行代码都可能引起上下文切换
 
 point4: 停止线程或者终止线程最好使用 interupt,捕获了interrupt异常之后，会先抛出异常，然后让当前线程执行完成，结束线程
 
@@ -71,14 +74,14 @@ point8： SynchronousQueue 同步阻塞队列： 同步队列是容量为0，也
 
 并发锁的原理:
 point1: 并发锁synchronized关键字最根本的原理就是 对象头
-		一个对象头默认是16byte(128bit),包含 markword 8byte(64bit),klass point(指向对象的指针)，instance data(根据实际情况分配) ，padding (对其填充，目的是为了填充到16byte的整数倍)
+		一个对象头默认是16byte(128bit),包含 markword 8byte(64bit),klass point 4byte(指向对象的指针,元空间中的类元数据信息)，instance data(根据实际情况分配) ，padding (对其填充，目的是为了填充到16byte的整数倍)
 point2: markword 整体为8byte，但根据不同状态有不同的地址分配
-					25bit			|		32bit		| 1bit 	 |	4bit  	| 	1bit 	| 2bit
+					25bit			|		31bit		| 1bit 	 |	4bit  	| 	1bit 	| 2bit
 					锁状态			|	hashcode		| 		 | 分代年龄  |  是否偏向锁| 锁状态
 			无锁::  unused			| hashcode			| unused | 分代年龄  | 0			| 01
 			偏向锁: 前54位记录当前线程的指针| 2bit记录Epoch|unused  | 分代年龄  | 1 		| 01
 			轻量级锁:	前62位指向线程栈中  LockRecord 指针 								| 00
-			重量级锁:	前62位指向重量级锁的指针 											| 10
+			重量级锁:	前62位指向重量级锁的指针(hashcode记录在monitor中)					| 10
 			GC标记信息:   CMS过程用到的标记信息											| 11
 point3: 4bit分代年龄的作用是在垃圾回收的时候，没回收一次，都会+1 ，当达到最大值15 的时候，就会从 年轻代升级为老年代
 
@@ -344,8 +347,8 @@ point4: 公平锁 加锁 过程:
 		    }
 
 		    private static boolean shouldParkAfterFailedAcquire(Node pred, Node node) {  pred:前一个节点，node:当前节点
-			    int ws = pred.waitStatus;											拿到前一个节点的waitStatus (waitStatus默认为0)
-			        if (ws == Node.SIGNAL)
+			    int ws = pred.waitStatus;											拿到前一个节点的waitStatus (waitStatus默认为0，还未被初始化)
+			        if (ws == Node.SIGNAL) // siginal  可被唤醒 ， cancelled 出现异常，中断引起的，需要废弃结束
 			            /*
 			             * This node has already set status asking a release
 			             * to signal it, so it can safely park.
@@ -366,7 +369,7 @@ point4: 公平锁 加锁 过程:
 			             * need a signal, but don't park yet.  Caller will need to
 			             * retry to make sure it cannot acquire before parking.
 			             */
-			            compareAndSetWaitStatus(pred, ws, Node.SIGNAL);
+			            compareAndSetWaitStatus(pred, ws, Node.SIGNAL);  通过前驱节点的　waitstatus的状态，判断下一个节点是否可被唤醒
 			        }
 			        return false;
 			    }
@@ -502,3 +505,7 @@ JMM
 
 
 point7: -XX:+UnlockDiagnosticVMOptions -XX:+PrintAssembly作为启动参数，就可以查看汇编指令
+
+mesi缓存一致性协议:
+    > https://www.cnblogs.com/ynyhl/p/12119690.html
+    >

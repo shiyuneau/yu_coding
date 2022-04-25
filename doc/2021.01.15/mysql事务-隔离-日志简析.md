@@ -79,8 +79,8 @@
   
 - redo log的存储方式:
       - redo log是固定大小的，如可配置为一组4个文件，每个文件的大小为1G，总共就有4G文件去记录，从头开始写，写到末尾就又回到开头循环写。
-      - write pos是当前记录的位置，一边写一边后移，当写到最后一个文件的末尾的时候，会回到第一块开头开始写。checkpoint是当前要释放的位置，释放记录前要把记录更新到数据文件。如果write pos追上checkpoint，表明全部空间满了，不能执行新的更新，得停下来释放掉一些位置，让checkpoint继续推进
-      - 当有一条数据需要更新的时候，innodb引擎先将数据更新到内存，再把记录写到redo log里面，更新就算完成了。同事 innnodb引擎会在适当的时候，将操作记录更新到磁盘里面
+          - write pos是当前记录的位置，一边写一边后移，当写到最后一个文件的末尾的时候，会回到第一块开头开始写。checkpoint是当前要释放的位置，释放记录前要把记录更新到数据文件。如果write pos追上checkpoint，表明全部空间满了，不能执行新的更新，得停下来释放掉一些位置，让checkpoint继续推进
+          - 当有一条数据需要更新的时候，innodb引擎先将数据更新到内存，再把记录写到redo log里面，更新就算完成了。同事 innnodb引擎会在适当的时候，将操作记录更新到磁盘里面
 
 - redo log和binlog的区别
       
@@ -93,6 +93,10 @@
     插入/更新的时候，存储引擎将数据更新到内存 buffer pool，同时将这个更新操作记录到redo log里，此时的redo log处于prepare状态。然后告知执行器执行完成了，随时可以提交事务。执行器生成这个操作的binlog，把binlog写入磁盘。执行器调用引擎的提交事务的接口，引擎把刚刚写入的redo log状态更改成提交 commit 状态。如果设置了innodb_flush_log_at_trx_commit=1，则会把redo log写入到 log on disk
     
     先写redo，后写binlog；会话发起commit动作，存储引擎层开启[Prepare]状态，在对应的redo日志记录上打上prepare标记，写入binlog并执行sync刷盘。在redo日志记录上打上commit标记表示记录提交完成
+    
+    参考: 不确定正确性: 实际的提交流程流程 ： redolog prepare 阶段写入 os cache - binlog 写入os cache - redolog 的 fsync 刷盘阶段（innodb_flush_log_at_trx_commit 控制是否刷盘）- binlog 的fsync 刷盘 - redolog 的commit 写入 buffer。
+    
+- https://blog.csdn.net/fouy_yun/article/details/103743793
 
 - innodb_flush_log_at_trx_commit 设置
   - innodb_flush_log_at_trx_commit=0，在提交事务时，InnoDB不会立即触发将缓存日志写到磁盘文件的操作，而是每秒触发一次缓存日志回写磁盘操作，并调用操作系统fsync刷新IO缓存。

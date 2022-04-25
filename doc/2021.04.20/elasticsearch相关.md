@@ -90,6 +90,7 @@
 
 #### es写数据的流程
 > ![Image text](../../imgs/es写数据详细原理.png)
+> https://www.cnblogs.com/jelly12345/p/15060133.html
 
 - 要写入的数据首先会写入到内存buffer中，但此时是搜索不到的;-
 - 如果buffer快满了，或者达到指定的时间，内存buffer数据会被refresh到一个新的segment file中，但该数据文件不是磁盘中的segment file，而是 os cache ，该过程叫 **refresh** 。数据写入到os cache之后，buffer就会被清空。
@@ -140,4 +141,10 @@
 #### es的数据迁移
 > https://www.infoq.cn/article/x3vc92swb7aqhamxjhzy 数据迁移的方案，从一个集群平滑迁移到另一个集群
 > https://juejin.cn/post/6844904004187586573 使用 Elactis dump 进行数据迁移 ，感觉是针对离线数据
+> 
+
+---
+
+
+#### es和solr的区别
 > 

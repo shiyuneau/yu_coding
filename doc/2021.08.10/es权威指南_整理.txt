@@ -28,7 +28,7 @@ https://www.cnblogs.com/heqiyoujing/p/11146178.html
 https://zhuanlan.zhihu.com/p/102500311
 
 
-point1: 
+point1:
 es mapping验证相关(es mapping的设置一般只需要增加，而不需要更新。更新的话需要先移除数据，再重新设置mapping，然后再进行索引)
 步骤如下:(通过RestHighLevelClient，可以再创建索引的时候就制定对应的mapping类型，不一定要先创建一条数据)
     1.创建一个索引
@@ -98,7 +98,7 @@ point2:
         }
       }
     }
-    现在 bool的写法: 
+    现在 bool的写法:
     GET _search
     {
       "query": {
@@ -125,7 +125,7 @@ point2:
         POST mapping_test2/_doc
         {
             "field_7":"seven test"
-        }   
+        }
 
         2.使用keyword查询，结果为null ， 去掉keyword查询，可以查出刚才插入的结果
         GET mapping_test2/_search
@@ -137,7 +137,7 @@ point2:
           }
         }
 
-point3: 
+point3:
     2.0的时候，浮点数默认的类型是double ，5.0更新后默认使用float。相对于double，可以降低存储需求。但有些情况下需要使用double，就要在mapping中手动指定double
 
 point4:
@@ -147,14 +147,14 @@ point5:
     es 中不存在所谓的更新操作，其更新操作都是用新的文档替换旧的文档。可以使用下面的语句进行更新(index/type/id/_update)，但也都是用新文档替换旧文档。同时还可以使用脚本(Groovy)进行更新
         POST mapping_test2/_doc/VFlNn3sB-z8hYu2zYVFZ/_update
         {
-          "doc":{ 
+          "doc":{
             "field_7":"seven update"
           }
         }
     upsert代表如果更新的文档不存在的话，会初始化一个新的文档
         POST mapping_test2/_doc/VFlNn3sB-z8hYu2zYVFZ/_update
         {
-          "doc":{ 
+          "doc":{
             "field_7":"seven update"
           },
           "upsert":{
@@ -183,7 +183,7 @@ point7:
             "match": {
               "cityname": "贵阳市"
             }
-          }, 
+          },
           "post_filter": {
             "term": {
               "regionname": "区"
@@ -197,7 +197,7 @@ point8:
     如果指定了排序字段，那么_score字段将失效(不会按照得分进行排序)，_score就为null
 
 point9: 各种查询的使用场景和举例
-    
+
     更推荐的是使用过滤器查询，一个是不会计算得分，然后 如果过滤器多次被使用，还会对其进行缓存
 
     1.match_all 匹配所有的文档，后面可以接 term 过滤的条件，得分会被忽略，但一般不太使用的
@@ -206,7 +206,7 @@ point9: 各种查询的使用场景和举例
           "query": {
             "match_all": {
             }
-          }, 
+          },
           "post_filter": {
             "term": {
               "regionname": "区"
@@ -234,7 +234,7 @@ point9: 各种查询的使用场景和举例
                 "match": {
                   "cityname": "贵阳市"
                 }
-              }, 
+              },
               "post_filter": {  // post_filter 查询之后过滤
                 "term": {
                   "regionname": "区"
@@ -264,7 +264,7 @@ point9: 各种查询的使用场景和举例
                     "query":"service before",
                     "operator": "and"
                   }
-                  
+
                 }
               }
             }
@@ -273,11 +273,11 @@ point9: 各种查询的使用场景和举例
         {
           "query": {
             "match_phrase": {
-              "field_7": { 
+              "field_7": {
                 "query":"service before",
                 "slop":1
               }
-              
+
             }
           }
         }
@@ -289,11 +289,11 @@ point9: 各种查询的使用场景和举例
         {
           "query": {
             "match_phrase_prefix": {
-              "field_7": { 
+              "field_7": {
                 "query":"service7 ser",
                 "max_expansions":3
               }
-              
+
             }
           }
         }
@@ -349,7 +349,7 @@ point9: 各种查询的使用场景和举例
 
         bool过滤器: 相当于使用过滤的条件下使用 bool
         GET /lib4/items/_search
-        { 
+        {
           "post_filter":{
             "bool":{
               "should":[
@@ -372,7 +372,7 @@ point9: 各种查询的使用场景和举例
               }
             }
           }
-        }                                                                                                                                                                                                   
+        }
 
     8.wildcard查询
         类似于shell 的通配符的查询方式。* 匹配任何字符序列 ， ? 匹配一个单独字符。但这个应该也慎用，因为匹配的话，会从 通配符之前的值开始查找子集，前缀越多，子集越小，效率越高。使用的收需要考虑到额外开支和性能
@@ -385,12 +385,12 @@ point9: 各种查询的使用场景和举例
               }
             }
           }
-        }                                                                                                                                                                                                  
+        }
 
 point10: 分析数据
     在文档被发送至倒排索引之前，es在其主体上进行的操作，可能包含以下步骤:
         (以 share experience with NoSql & big technologies 为例)
-        input -> characterFilters(字符过滤器) -> tokenizer(分词器) -> TokenFilters(分词过滤器)[0个或多个] -> output 
+        input -> characterFilters(字符过滤器) -> tokenizer(分词器) -> TokenFilters(分词过滤器)[0个或多个] -> output
 
         字符过滤:  使用字符过滤器转变字符
             通过分词 过滤器 & => and 将内容转换成  share experience with NoSql and big technologies
@@ -402,9 +402,9 @@ point10: 分析数据
             分词过滤器可以是一个链，包含多个分词过滤:
                 常用的有 小写 转换，停用词，同义词 等, 最后被分为： share experience with nosql  big technologies tools
 
-        分词索引:  将分词存储到索引中       
+        分词索引:  将分词存储到索引中
 
-        除了分词索引，上面三个步骤可以为一个定制分析器，该分析其可以由自己定制 
+        除了分词索引，上面三个步骤可以为一个定制分析器，该分析其可以由自己定制
 
     可以在创建索引的时候，通过 analysis代码块设置具体的分析器。如下。该例子中就是在index索引下设置了该索引的analyzer(分析器)是ik分析器。es默认提供了 standard , english ,stop , lower等分析器，也可以自定义自己的分析器
         PUT /my_index
@@ -491,8 +491,8 @@ point14: 评分
         逆文档频率是 1/df 。 所以 文档频率约高，逆文档频率越低，权重就越低
 
     评分公式:TF-IDF
-        给定查询 q 和 文档 d ，其得分是 查询中每个词条 t 的 得分总和。而每个词条的得分是该词在文档d中的词频的平方根，乘以该词逆文档频率的平方和，乘以该文档字段的归一化因子，乘以该次的提升权重 
-        score(query,document) = 
+        给定查询 q 和 文档 d ，其得分是 查询中每个词条 t 的 得分总和。而每个词条的得分是该词在文档d中的词频的平方根，乘以该词逆文档频率的平方和，乘以该文档字段的归一化因子，乘以该次的提升权重
+        score(query,document) =
         词条的词频越高，得分越高; 索引中词条越罕见，逆文档频率越高。
         调和因子考虑了搜索过多少文档以及发现了多少词条。查询标准化是试图让不同查询的结果具有可比性
         默认的 TF-IDF 打分方法是 由 TF-IDF和向量空间模型的结合
@@ -638,7 +638,7 @@ point18: function_score来定制得分
             }
           },
           "functions": [ // 空的function_list
-           
+
           ]
         }
       }
@@ -759,7 +759,7 @@ point18: function_score来定制得分
 
     3.选举主节点
         一旦集群中的节点发现彼此，就会协商谁将成为主节点。主节点会负责管理集群的状态(当前的设置，集群中分片、索引、节点状态等)。主节点被选举出来后，会建立内部的ping机制来确保每个节点在集群种保持活跃和健康,其叫做错误识别(fault detection)
-        
+
         es 默认所有节点都有资格成为主节点，除非某个节点的 node.master设置为false。
         选举:
           a.对所有可以成为master的节点根据nodeId排序，每次选举每个节点都把自己所知道节点排一次序，然后选出第一个（第0位）节点，暂且认为它是master节点。
@@ -915,7 +915,7 @@ point18: function_score来定制得分
     b. 脚本的使用 : 脚本 给查询提供了更多的灵活性，但是 要慎重使用脚本查询。因为脚本常常更耗费时间和cpu，而且脚本的结果不会被缓存。所以如果想使用脚本的话，需要深入脚本代码，并进行一定的性能优化。
 
     c. 权衡网络开销 : es 查询的方式 默认是 query_then_fetch , 即 先返回文档的ID以及用于排序的元数据给协调节点，协调节点排序后，再从分片中获取所需的前size篇文档的具体内容。可以减少多数情况下的网络开销，但由于会引发两次网络传输，所以是 then 。
-                    
+
                     但query_then_fetch这种方式也会有一个问题。由于得分采用TF/IDF的方式，其中df 文档频率 展示的是 搜索词条在所有文档中出现了多少次，但这个所有文档代表的是这个分片上的所有文档，如果文档分布的不是那么均匀，就有可能出现某个节点上词频少，但权重更高的现象，导致结果出现问题。针对这种情况，可以采用 dfs_query_then_fetch , 这种方式 协调节点会向所有的分片发送一次额外的请求，来收集被搜词条的文档频率，然后再根据这个频率进行搜索。
 
                     还有一种查询方式是 query_and_fetch , 即直接从每个分片中取 size 个数的文档，然后集合到协调器节点，排序文档，取前十个返回。但是这样会增加网络的开销，同时由于所有的文档都集中在协调节点，还可能导致协调节点内存占用很大，导致协调节点出现问题。
@@ -926,9 +926,9 @@ point18: function_score来定制得分
   1.模板: 对于同一种类型的索引，可以采用模板进行索引的一些通用配置, 下为模板的一个配置的json样例
         PUT _template/logging_index
         {
-          "index_patterns": ["logstash-*"], 
+          "index_patterns": ["logstash-*"],
           "settings": {
-            "number_of_shards": 2, 
+            "number_of_shards": 2,
             "number_of_replicas": 1
           }
           , "mappings": {
@@ -949,14 +949,14 @@ point18: function_score来定制得分
     {
       "cluster_name" : "elasticsearch",
       "status" : "yellow",               // 集群状态 。绿色:主分片和副本分片都已经分发且运作正常;黄色:通常是副本分片丢失的信号;红色:危险，无法找到集群中的主分片，使得主分片上的索引操作不能进行，导致不一致的查询结果。
-      "timed_out" : false,      
+      "timed_out" : false,
       "number_of_nodes" : 1,             // 节点总数量
       "number_of_data_nodes" : 1,        // 存放数据的节点数量
       "active_primary_shards" : 490,     // 集群中，全部索引的主分片总数量
       "active_shards" : 490,             // 集群中全部索引的所有分片，八廓主分片和副本分片的总数量
       "relocating_shards" : 0,           // 当下正在多个节点间移动的分片数量 ，该属性 >0 代表es正在集群内以动数据的分片，来提升负载均衡和故障转移。通常发生在添加新节点、重启失效节点、删除节点时候，是一种临时现象。
       "initializing_shards" : 0,         // 新创建的分片数量。 当用户刚刚创建一个新的索引或者重启一个节点的时候，该值大于0 .(那新加一个节点会不会也大于0)
-      "unassigned_shards" : 487,         // 集群中定义的，却未能发现的分片数量 。 该值大于0 最常见的原因是有 尚未分配的副本分片， 
+      "unassigned_shards" : 487,         // 集群中定义的，却未能发现的分片数量 。 该值大于0 最常见的原因是有 尚未分配的副本分片，
       "delayed_unassigned_shards" : 0,
       "number_of_pending_tasks" : 0,
       "number_of_in_flight_fetch" : 0,
@@ -1051,27 +1051,30 @@ POST http:xxxx:9200/_snapshot/my_backup/snapshot_1/_restore?wait_for_completion=
 
     首先需要把 cluster.routing.allocation.disable_allocation参数设为true，禁止系统自动分配。然后使用api操作
 
-    curl -XPOST 'localhost:9200/_cluster/reroute' -d '{  
-    "commands" : [ {  
+    curl -XPOST 'localhost:9200/_cluster/reroute' -d '{
+    "commands" : [ {
         "move" :    移动  把分片从一个节点移动到另一个节点，指定索引名和分片号
-            {  
-              "index" : "test", "shard" : 0,   
-              "from_node" : "node1", "to_node" : "node2"  
-            }  
+            {
+              "index" : "test", "shard" : 0,
+              "from_node" : "node1", "to_node" : "node2"
+            }
         },  {
        "cancel" :   取消，取消node1节点上 正在分配的分片
-            {  
-              "index" : "test", "shard" : 0, "node" : "node1"  
-            }  
-        },  
-        {  
+            {
+              "index" : "test", "shard" : 0, "node" : "node1"
+            }
+        },
+        {
           "allocate" : {   分配一个 未分配的分片 到指定节点 node3 上
-              "index" : "test", "shard" : 1, "node" : "node3"  
-          }  
-        }  
-    ]  
-}' 
+              "index" : "test", "shard" : 1, "node" : "node3"
+          }
+        }
+    ]
+}'
 
 
 es的倒排索引:
 https://ricstudio.top/archives/es-lucene-reverted-index
+
+es集群原理
+https://www.jianshu.com/p/698418629e37
